@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+websockets
+sqlalchemy
+pandas
+openpyxl
+playwright
+playwright-stealth
+python-multipart
+psycopg2-binary
