@@ -235,23 +235,19 @@ async def check_updates():
     import json
     import os
     
-    # URL de GitHub Raw donde vivirá el version.json maestro (Reemplazar URL por la real del repositorio)
-    REMOTE_URL = "https://raw.githubusercontent.com/TuUsuario/TuRepositorio/main/WebAppWorkspace/backend/version.json"
+    # URL de GitHub Raw donde vivirá el version.json maestro
+    REMOTE_URL = "https://raw.githubusercontent.com/carloscruzerrazuriz/GoWild-Scraper/main/backend/version.json"
     
     try:
         local_path = os.path.join(os.path.dirname(__file__), "version.json")
         with open(local_path, "r") as f:
             local_version = json.load(f).get("version", "1.0.0")
             
-        # Simulación de respuesta si aún no tienes el repo subido:
-        # Para forzar la prueba, comentaremos la llamada real y fingiremos una actualización
-        # req = urllib.request.Request(REMOTE_URL)
-        # with urllib.request.urlopen(req) as response:
-        #    remote_data = json.loads(response.read().decode())
-        #    remote_version = remote_data.get("version")
-        
-        # TESTING MODE: Finge que hay una versión 2.0.0 disponible
-        remote_version = "2.0.0"
+        # Petición real al GitHub
+        req = urllib.request.Request(REMOTE_URL)
+        with urllib.request.urlopen(req) as response:
+            remote_data = json.loads(response.read().decode())
+            remote_version = remote_data.get("version")
         
         return {
             "update_available": local_version != remote_version,
