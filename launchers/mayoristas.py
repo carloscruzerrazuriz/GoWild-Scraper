@@ -63,14 +63,9 @@ def run():
     CHECKPOINT_DIR = OUTPUT_DIR / "_pm_checkpoints"
     CHECKPOINT_DIR.mkdir(exist_ok=True)
 
-    # Limpia el bloque `if __name__ == "__main__":` para que `exec(_SRC_SODIMAC, globals())`
-    # no dispare asyncio.run(main()) al cargar.
-    def _strip_main(src):
-        pattern = r"if\s+__name__\s*==\s*['\"]__main__['\"]\s*:[\s\S]*\Z"
-        return re.sub(pattern, "", src)
-
-    # ===== Scraper Sodimac (embebido) =====
-    exec(_strip_main(_SRC_SODIMAC), globals())
+    # Engine Sodimac importado desde engines/ (refactor v2.0: ya no se embebe inline).
+    from engines import maestra_sodimac as _ss
+    globals().update({k: getattr(_ss, k) for k in dir(_ss) if not k.startswith('_')})
     print(f"Scraper Sodimac cargado. {len(ALL_STORES)} tiendas disponibles.")
 
     # ============================================================
