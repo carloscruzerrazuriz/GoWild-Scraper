@@ -2546,6 +2546,9 @@ def run():
 
     def _dispatch(retailer):
         """Carga el scraper y su UI en globals() segun la tienda."""
+        # Las raw strings _UI_* heredaron el indent del def run(); las dedentamos
+        # antes de exec() porque exec las trata como código top-level.
+        import textwrap
         if retailer == "sodimac":
             from engines import maestra_sodimac as ss
             globals().update({
@@ -2558,13 +2561,13 @@ def run():
                 "PartialWriter": ss.PartialWriter,
                 "MAX_PAGES_PER_SUBCAT": ss.MAX_PAGES_PER_SUBCAT,
             })
-            exec(_UI_SODIMAC, globals())
+            exec(textwrap.dedent(_UI_SODIMAC), globals())
         elif retailer == "falabella":
             from engines import maestra_falabella as _mf; globals().update({k: getattr(_mf, k) for k in dir(_mf) if not k.startswith('_')})
-            exec(_UI_FALABELLA, globals())
+            exec(textwrap.dedent(_UI_FALABELLA), globals())
         elif retailer == "construmart":
             from engines import maestra_construmart as _mc; globals().update({k: getattr(_mc, k) for k in dir(_mc) if not k.startswith('_')})
-            exec(_UI_CONSTRUMART, globals())
+            exec(textwrap.dedent(_UI_CONSTRUMART), globals())
         else:
             raise RuntimeError(f"Tienda desconocida: {retailer}")
 
