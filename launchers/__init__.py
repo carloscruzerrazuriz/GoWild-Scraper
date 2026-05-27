@@ -17,11 +17,24 @@ _TOOLS = {
 
 
 def boot(tool: str) -> None:
-    """Entry point invoked from each notebook's last cell."""
+    """Entry point invoked from each notebook's last cell.
+
+    Force-reloads the launcher and any cached engines/* modules so that a fresh
+    `git pull` always propagates to the running kernel (without needing a kernel
+    restart from the user).
+    """
     import importlib
+    import sys
+
     if tool not in _TOOLS:
         available = ", ".join(sorted(_TOOLS))
         raise ValueError(f"Tool desconocido: {tool!r}. Disponibles: {available}")
+
+    # Drop any cached launchers.* and engines.* modules so import re-reads from disk.
+    for cached in [name for name in list(sys.modules)
+                   if name.startswith("launchers.") or name.startswith("engines.")]:
+        del sys.modules[cached]
+
     mod = importlib.import_module(_TOOLS[tool])
     if not hasattr(mod, "run"):
         raise RuntimeError(f"El launcher {_TOOLS[tool]} no expone run()")
