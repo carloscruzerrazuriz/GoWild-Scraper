@@ -2535,32 +2535,28 @@ def run():
 
     STATE = {"retailer": None}
 
-
+    # Widgets del selector de retailer (estaban en el cell original, restaurados tras el refactor).
+    _radio = widgets.RadioButtons(
+        options=[("Sodimac", "sodimac"), ("Falabella", "falabella"), ("Construmart", "construmart")],
+        description="Tienda:",
+        style={"description_width": "initial"},
+    )
+    _btn = widgets.Button(description="Confirmar tienda", button_style="primary", icon="check")
+    _out = widgets.Output()
 
     def _dispatch(retailer):
         """Carga el scraper y su UI en globals() segun la tienda."""
         if retailer == "sodimac":
-            # La UI de Sodimac importa el modulo `scraper_seccion` desde disco.
-            Path("scraper_seccion.py").write_text(_SRC_SODIMAC, encoding="utf-8")
-            if str(Path.cwd()) not in sys.path:
-                sys.path.insert(0, str(Path.cwd()))
-            if "scraper_seccion" in sys.modules:
-                import importlib; importlib.reload(sys.modules["scraper_seccion"])
-            import scraper_seccion as ss  # noqa: F401
-            from scraper_seccion import (
-                set_zone_with_retry, discover_sections, scrape_subcat, write_excel,
-                ALL_STORES, PartialWriter, MAX_PAGES_PER_SUBCAT,
-            )
-            # Re-expone en globals() del notebook para que la UI las use
+            from engines import maestra_sodimac as ss
             globals().update({
                 "ss": ss,
-                "set_zone_with_retry": set_zone_with_retry,
-                "discover_sections": discover_sections,
-                "scrape_subcat": scrape_subcat,
-                "write_excel": write_excel,
-                "ALL_STORES": ALL_STORES,
-                "PartialWriter": PartialWriter,
-                "MAX_PAGES_PER_SUBCAT": MAX_PAGES_PER_SUBCAT,
+                "set_zone_with_retry": ss.set_zone_with_retry,
+                "discover_sections": ss.discover_sections,
+                "scrape_subcat": ss.scrape_subcat,
+                "write_excel": ss.write_excel,
+                "ALL_STORES": ss.ALL_STORES,
+                "PartialWriter": ss.PartialWriter,
+                "MAX_PAGES_PER_SUBCAT": ss.MAX_PAGES_PER_SUBCAT,
             })
             exec(_UI_SODIMAC, globals())
         elif retailer == "falabella":
