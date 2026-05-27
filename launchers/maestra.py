@@ -2546,9 +2546,12 @@ def run():
 
     def _dispatch(retailer):
         """Carga el scraper y su UI en globals() segun la tienda."""
-        # Las raw strings _UI_* heredaron el indent del def run(); las dedentamos
-        # antes de exec() porque exec las trata como código top-level.
-        import textwrap
+        # Las raw strings _UI_* heredaron el indent del def run() (4 espacios).
+        # textwrap.dedent NO funciona acá porque la primera línea de cada UI no
+        # tiene indent (empieza justo después de r'''), así que el "prefijo común"
+        # calculado es 0. Forzamos quitar 4 espacios de cada línea que los tenga.
+        def _strip4(s):
+            return "\n".join(ln[4:] if ln.startswith("    ") else ln for ln in s.splitlines())
         if retailer == "sodimac":
             from engines import maestra_sodimac as ss
             globals().update({
@@ -2561,13 +2564,13 @@ def run():
                 "PartialWriter": ss.PartialWriter,
                 "MAX_PAGES_PER_SUBCAT": ss.MAX_PAGES_PER_SUBCAT,
             })
-            exec(textwrap.dedent(_UI_SODIMAC), globals())
+            exec(_strip4(_UI_SODIMAC), globals())
         elif retailer == "falabella":
             from engines import maestra_falabella as _mf; globals().update({k: getattr(_mf, k) for k in dir(_mf) if not k.startswith('_')})
-            exec(textwrap.dedent(_UI_FALABELLA), globals())
+            exec(_strip4(_UI_FALABELLA), globals())
         elif retailer == "construmart":
             from engines import maestra_construmart as _mc; globals().update({k: getattr(_mc, k) for k in dir(_mc) if not k.startswith('_')})
-            exec(textwrap.dedent(_UI_CONSTRUMART), globals())
+            exec(_strip4(_UI_CONSTRUMART), globals())
         else:
             raise RuntimeError(f"Tienda desconocida: {retailer}")
 
