@@ -64,8 +64,10 @@ def run():
     CHECKPOINT_DIR.mkdir(exist_ok=True)
 
     # Engine Sodimac importado desde engines/ (refactor v2.0: ya no se embebe inline).
+    # Expone TODO menos los dunders (__name__, __doc__, etc.) — las funciones internas
+    # con un solo underscore (ej: _build_extract_all_js) sí las necesita la UI.
     from engines import maestra_sodimac as _ss
-    globals().update({k: getattr(_ss, k) for k in dir(_ss) if not k.startswith('_')})
+    globals().update({k: getattr(_ss, k) for k in dir(_ss) if not k.startswith('__')})
     print(f"Scraper Sodimac cargado. {len(ALL_STORES)} tiendas disponibles.")
 
     # ============================================================

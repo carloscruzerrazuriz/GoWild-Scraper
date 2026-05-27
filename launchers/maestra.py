@@ -2566,10 +2566,10 @@ def run():
             })
             exec(_strip4(_UI_SODIMAC), globals())
         elif retailer == "falabella":
-            from engines import maestra_falabella as _mf; globals().update({k: getattr(_mf, k) for k in dir(_mf) if not k.startswith('_')})
+            from engines import maestra_falabella as _mf; globals().update({k: getattr(_mf, k) for k in dir(_mf) if not k.startswith('__')})
             exec(_strip4(_UI_FALABELLA), globals())
         elif retailer == "construmart":
-            from engines import maestra_construmart as _mc; globals().update({k: getattr(_mc, k) for k in dir(_mc) if not k.startswith('_')})
+            from engines import maestra_construmart as _mc; globals().update({k: getattr(_mc, k) for k in dir(_mc) if not k.startswith('__')})
             exec(_strip4(_UI_CONSTRUMART), globals())
         else:
             raise RuntimeError(f"Tienda desconocida: {retailer}")
