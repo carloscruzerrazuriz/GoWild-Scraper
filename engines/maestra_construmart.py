@@ -789,9 +789,9 @@ def write_excel(rows, output_file):
         ii = list(df.columns).index("Imagen") + 1
         ws.column_dimensions[openpyxl.utils.get_column_letter(ii)].width = 30
         for ri, rd in enumerate(rows, start=2):
-            ws.row_dimensions[ri].height = 260
             ip = rd.get("Image Path", "")
             if ip and os.path.exists(ip):
+                ws.row_dimensions[ri].height = 260
                 try:
                     img = OpenpyxlImage(ip); img.width = 200; img.height = 250
                     img.anchor = TwoCellAnchor(
