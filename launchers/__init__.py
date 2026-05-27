@@ -1,0 +1,28 @@
+"""GoWild-Scraper launcher dispatcher.
+
+Each notebook calls `boot("<tool_name>")` to launch its UI. The launcher modules
+are kept in this package; new tools = new modules. The notebooks themselves are
+thin shells (bootstrap + boot() call) so 99% of changes propagate via `git pull`
+without users needing a new .ipynb.
+"""
+from __future__ import annotations
+
+LAUNCHER_SCHEMA = "1.0"
+
+_TOOLS = {
+    "mk7":        "launchers.mk7",
+    "maestra":    "launchers.maestra",
+    "mayoristas": "launchers.mayoristas",
+}
+
+
+def boot(tool: str) -> None:
+    """Entry point invoked from each notebook's last cell."""
+    import importlib
+    if tool not in _TOOLS:
+        available = ", ".join(sorted(_TOOLS))
+        raise ValueError(f"Tool desconocido: {tool!r}. Disponibles: {available}")
+    mod = importlib.import_module(_TOOLS[tool])
+    if not hasattr(mod, "run"):
+        raise RuntimeError(f"El launcher {_TOOLS[tool]} no expone run()")
+    mod.run()
