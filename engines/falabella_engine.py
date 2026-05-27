@@ -1268,36 +1268,39 @@ async def search_skus(skus_with_meta, zones=None, screenshot=True, headless=True
 
 # ─────────────────────────────────────────  Output  ────────────────────────
 
+# Columnas finales del Excel de output (sin "Imagen" — esa se agrega al final por write_output).
 OUTPUT_COLS = [
     "Zona", "Comuna", "SKU Easy", "Desc. Producto", "SKU Falabella",
     "Vendedor", "Marca", "Descripción Producto",
     "Precio Normal", "Precio Internet", "Precio CMR", "% Descuento",
-    "Rating", "Reviews", "En Stock", "Badges", "URL", "Source",
+    "URL",
 ]
 
 
 def write_output(rows, output_path):
     if not rows:
         raise ValueError("No hay filas para escribir.")
+    from ._excel_utils import filter_and_reorder, apply_url_truncation
+
     df = pd.DataFrame(rows)
-    for c in OUTPUT_COLS:
-        if c not in df.columns:
-            df[c] = ""
-    df_data = df[OUTPUT_COLS].copy()
+    df_data = filter_and_reorder(df, OUTPUT_COLS)
+    # Imagen siempre al final (columna placeholder vacía; las imágenes se embeben abajo).
+    df_data["Imagen"] = ""
     df_data.to_excel(output_path, index=False, sheet_name="Datos")
 
     wb = openpyxl.load_workbook(output_path)
-    ws2 = wb.create_sheet("Con fotos")
-    photo_cols = OUTPUT_COLS + ["Imagen"]
-    ws2.append(photo_cols)
-    img_col_idx = len(photo_cols)
-    ws2.column_dimensions[openpyxl.utils.get_column_letter(img_col_idx)].width = 30
+    ws = wb["Datos"]
+    final_cols = list(df_data.columns)
+    img_col_idx = final_cols.index("Imagen") + 1
+    url_col_idx = final_cols.index("URL") + 1
+
+    ws.column_dimensions[openpyxl.utils.get_column_letter(img_col_idx)].width = 30
+
+    # Embedder screenshots si hay
     for ri, rd in enumerate(rows, start=2):
-        for ci, col in enumerate(OUTPUT_COLS, start=1):
-            ws2.cell(row=ri, column=ci, value=rd.get(col, ""))
-        ws2.row_dimensions[ri].height = 220
         ip = rd.get("Image Path", "")
         if ip and os.path.exists(ip):
+            ws.row_dimensions[ri].height = 220
             try:
                 img = OpenpyxlImage(ip); img.width = 170; img.height = 200
                 img.anchor = TwoCellAnchor(
@@ -1305,17 +1308,19 @@ def write_output(rows, output_path):
                     _from=AnchorMarker(col=img_col_idx - 1, colOff=0, row=ri - 1, rowOff=0),
                     to=AnchorMarker(col=img_col_idx, colOff=0, row=ri, rowOff=0),
                 )
-                ws2.add_image(img)
+                ws.add_image(img)
             except Exception:
                 pass
 
+    # URL truncado visual (sin overflow a Imagen)
+    apply_url_truncation(ws, url_col_idx, img_col_idx, url_width=40, total_rows=len(rows) + 1)
+
     # Forzar SKUs como texto
-    ws1 = wb["Datos"]
     for col_name in ("SKU Easy", "SKU Falabella"):
-        if col_name in OUTPUT_COLS:
-            cidx = OUTPUT_COLS.index(col_name) + 1
+        if col_name in final_cols:
+            cidx = final_cols.index(col_name) + 1
             for ri in range(2, len(rows) + 2):
-                c = ws1.cell(row=ri, column=cidx)
+                c = ws.cell(row=ri, column=cidx)
                 c.number_format = "@"
                 if c.value is not None:
                     c.value = str(c.value)

@@ -755,26 +755,41 @@ def pick_stores():
 
 # ─────────────────────────────────────────  Excel  ─────────────────────────
 
-def write_excel(rows, output_file):
+# Columnas finales del Excel (sin "Imagen" — esa se agrega siempre al final).
+OUTPUT_COLS = [
+    "Tienda", "Nombre Tienda", "Sección", "Subcategoría",
+    "Vendedor", "Marca", "SKU", "Descripción Producto",
+    "Precio Normal", "Precio Internet", "% Descuento",
+    "Precio CMR", "Precio Mayorista", "Descuento Mayorista",
+    "Todos los Precios", "URL",
+]
+
+
+def write_excel(rows, output_file, columns=None):
+    """Escribe el Excel con columnas filtradas + Imagen al final + URL truncado.
+
+    columns: si se pasa, define el orden y subset de columnas. Si no, usa OUTPUT_COLS.
+    """
     if not rows:
         return False
+    from ._excel_utils import filter_and_reorder, apply_url_truncation
+
+    cols_to_use = columns if columns is not None else OUTPUT_COLS
     df = pd.DataFrame(rows)
-    # Force "Tienda" + "Nombre Tienda" to be the first two columns.
-    leading = [c for c in ("Tienda", "Nombre Tienda") if c in df.columns]
-    rest = [c for c in df.columns if c not in leading]
-    df = df[leading + rest]
+    df = filter_and_reorder(df, cols_to_use)
     df["Imagen"] = ""
     df.to_excel(output_file, index=False)
+
     wb = openpyxl.load_workbook(output_file)
     ws = wb.active
     try:
-        ipi = list(df.columns).index("Image Path") + 1
-        ii = list(df.columns).index("Imagen") + 1
+        final_cols = list(df.columns)
+        ii = final_cols.index("Imagen") + 1
         ws.column_dimensions[openpyxl.utils.get_column_letter(ii)].width = 25
+
         for ri, rd in enumerate(rows, start=2):
             ip = rd.get("Image Path", "")
             if ip and os.path.exists(ip):
-                # Solo agrandar la fila si hay imagen real que embeber
                 ws.row_dimensions[ri].height = 160
                 try:
                     img = OpenpyxlImage(ip); img.width = 160; img.height = 200
@@ -786,7 +801,12 @@ def write_excel(rows, output_file):
                     ws.add_image(img)
                 except Exception:
                     pass
-        ws.delete_cols(ipi)
+
+        # URL truncado visual
+        if "URL" in final_cols:
+            url_col_idx = final_cols.index("URL") + 1
+            apply_url_truncation(ws, url_col_idx, ii, url_width=40, total_rows=len(rows) + 1)
+
         wb.save(output_file)
     except Exception as e:
         console.print(f"[yellow]Aviso embebiendo imágenes: {e}[/]")

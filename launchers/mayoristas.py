@@ -596,7 +596,15 @@ def run():
             out_name = f"sodimac_ventas_mayor_{run_id.replace('pm_','')}.xlsx"
             out_path = OUTPUT_DIR / out_name
             try:
-                write_excel(all_rows, str(out_path))
+                # Columnas específicas de Precios Mayoristas (las del Excel template del cliente).
+                _PM_OUTPUT_COLS = [
+                    "Tienda", "Nombre Tienda", "Sección", "Subcategoría",
+                    "Vendedor", "Marca", "SKU", "Descripción Producto",
+                    "Precio Normal", "Precio Internet", "% Descuento",
+                    "Precio CMR", "Precio Mayorista", "Descuento Mayorista",
+                    "Todos los Precios", "URL",
+                ]
+                write_excel(all_rows, str(out_path), columns=_PM_OUTPUT_COLS)
                 with result_out:
                     clear_output()
                     print(f"Excel generado: {out_name}  ({len(all_rows)} filas, {len(stores_done)}/{n_stores} tiendas)")

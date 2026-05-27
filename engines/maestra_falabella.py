@@ -750,31 +750,32 @@ def pick_stores():
 
 # ─────────────────────────────────────────  Excel  ─────────────────────────
 
-def write_excel(rows, output_file):
+OUTPUT_COLS = [
+    "Tienda", "Nombre Tienda", "Sección", "Subcategoría",
+    "Vendedor", "Marca", "SKU", "Descripción Producto",
+    "Precio Normal", "Precio Internet", "Precio CMR", "% Descuento",
+    "URL",
+]
+
+
+def write_excel(rows, output_file, columns=None):
     if not rows:
         return False
+    from ._excel_utils import filter_and_reorder, apply_url_truncation
+
+    cols_to_use = columns if columns is not None else OUTPUT_COLS
     df = pd.DataFrame(rows)
-    # Si hay columnas de zona, van primero (igual que Sodimac).
-    leading = [c for c in ("Tienda", "Nombre Tienda") if c in df.columns]
-    # Orden de columnas deseado para el resto
-    desired = [
-        "Sección", "Subcategoría", "Vendedor", "Marca", "SKU", "Product ID",
-        "Descripción Producto",
-        "Precio Normal", "Precio Internet", "Precio CMR", "% Descuento",
-        "Rating", "Reviews", "En Stock", "Badges",
-        "URL", "Imagen URL", "Image Path",
-    ]
-    cols = [c for c in desired if c in df.columns and c not in leading]
-    extras = [c for c in df.columns if c not in leading + cols]
-    df = df[leading + cols + extras]
+    df = filter_and_reorder(df, cols_to_use)
     df["Imagen"] = ""
     df.to_excel(output_file, index=False)
+
     wb = openpyxl.load_workbook(output_file)
     ws = wb.active
     try:
-        ipi = list(df.columns).index("Image Path") + 1
-        ii = list(df.columns).index("Imagen") + 1
+        final_cols = list(df.columns)
+        ii = final_cols.index("Imagen") + 1
         ws.column_dimensions[openpyxl.utils.get_column_letter(ii)].width = 25
+
         for ri, rd in enumerate(rows, start=2):
             ip = rd.get("Image Path", "")
             if ip and os.path.exists(ip):
@@ -789,7 +790,11 @@ def write_excel(rows, output_file):
                     ws.add_image(img)
                 except Exception:
                     pass
-        ws.delete_cols(ipi)
+
+        if "URL" in final_cols:
+            url_col_idx = final_cols.index("URL") + 1
+            apply_url_truncation(ws, url_col_idx, ii, url_width=40, total_rows=len(rows) + 1)
+
         wb.save(output_file)
     except Exception as e:
         console.print(f"[yellow]Aviso embebiendo imágenes: {e}[/]")

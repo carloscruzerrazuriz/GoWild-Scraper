@@ -1459,36 +1459,32 @@ OUTPUT_COLS = [
     "Tienda", "Nombre Tienda", "SKU Easy", "Desc. Producto", "SKU Construmart",
     "Marca", "Descripción Producto",
     "Precio Normal", "Precio Internet", "% Descuento", "Promos",
-    "Stock", "En Stock", "URL", "Source",
+    "En Stock", "URL",
 ]
 
 
 def write_output(rows, output_path):
-    """Excel 2 hojas: 'Datos' (sin imágenes) y 'Con fotos' (con screenshots embebidos)."""
+    """Excel 1 hoja con columnas filtradas + Imagen al final (screenshots embedidos cuando existen)."""
     if not rows:
         raise ValueError("No hay filas para escribir.")
-    df = pd.DataFrame(rows)
-    for c in OUTPUT_COLS:
-        if c not in df.columns:
-            df[c] = ""
+    from ._excel_utils import filter_and_reorder, apply_url_truncation
 
-    # Hoja 1: Datos
-    df_data = df[OUTPUT_COLS].copy()
+    df = pd.DataFrame(rows)
+    df_data = filter_and_reorder(df, OUTPUT_COLS)
+    df_data["Imagen"] = ""
     df_data.to_excel(output_path, index=False, sheet_name="Datos")
 
     wb = openpyxl.load_workbook(output_path)
-    # Hoja 2: Con fotos
-    ws2 = wb.create_sheet("Con fotos")
-    photo_cols = OUTPUT_COLS + ["Imagen"]
-    ws2.append(photo_cols)
-    img_col_idx = len(photo_cols)  # 1-based
-    ws2.column_dimensions[openpyxl.utils.get_column_letter(img_col_idx)].width = 30
+    ws = wb["Datos"]
+    final_cols = list(df_data.columns)
+    img_col_idx = final_cols.index("Imagen") + 1
+    url_col_idx = final_cols.index("URL") + 1
+    ws.column_dimensions[openpyxl.utils.get_column_letter(img_col_idx)].width = 30
+
     for ri, rd in enumerate(rows, start=2):
-        for ci, col in enumerate(OUTPUT_COLS, start=1):
-            ws2.cell(row=ri, column=ci, value=rd.get(col, ""))
-        ws2.row_dimensions[ri].height = 220
         ip = rd.get("Image Path", "")
         if ip and os.path.exists(ip):
+            ws.row_dimensions[ri].height = 220
             try:
                 img = OpenpyxlImage(ip); img.width = 170; img.height = 200
                 img.anchor = TwoCellAnchor(
@@ -1496,17 +1492,18 @@ def write_output(rows, output_path):
                     _from=AnchorMarker(col=img_col_idx - 1, colOff=0, row=ri - 1, rowOff=0),
                     to=AnchorMarker(col=img_col_idx, colOff=0, row=ri, rowOff=0),
                 )
-                ws2.add_image(img)
+                ws.add_image(img)
             except Exception:
                 pass
 
-    # Forzar columnas SKU como texto en "Datos"
-    ws1 = wb["Datos"]
+    apply_url_truncation(ws, url_col_idx, img_col_idx, url_width=40, total_rows=len(rows) + 1)
+
+    # Forzar columnas SKU como texto
     for col_name in ("SKU Easy", "SKU Construmart"):
-        if col_name in OUTPUT_COLS:
-            cidx = OUTPUT_COLS.index(col_name) + 1
+        if col_name in final_cols:
+            cidx = final_cols.index(col_name) + 1
             for ri in range(2, len(rows) + 2):
-                c = ws1.cell(row=ri, column=cidx)
+                c = ws.cell(row=ri, column=cidx)
                 c.number_format = "@"
                 if c.value is not None:
                     c.value = str(c.value)

@@ -743,71 +743,64 @@ def write_output(df, desc_col, sku_col, easy_col, matches, output_path, stores=N
     cols["Todos los Precios"]        = [r["todos_los_precios"] for r in rows]
     cols["URL"]                      = [r["url"] for r in rows]
 
-    # Build dataframe WITHOUT the screenshot column for sheet 1.
+    # Imagen al final como única columna de output (sin segunda hoja "Con fotos").
+    cols["Imagen"] = ""
     out = pd.DataFrame(cols)
     screenshot_paths = [r["screenshot_path"] for r in rows]
 
-    # Two-sheet write:
-    #   Sheet 1 "Datos"      → texto puro, sin imágenes (más liviano, filtrable).
-    #   Sheet 2 "Con fotos"  → mismas filas + columna con screenshots embebidos.
-    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        out.to_excel(writer, sheet_name="Datos", index=False)
-        out_with_imgs = out.copy()
-        out_with_imgs["Screenshot tarjeta"] = ""  # placeholder
-        out_with_imgs.to_excel(writer, sheet_name="Con fotos", index=False)
+    out.to_excel(output_path, sheet_name="Datos", index=False)
 
-    # Post-process: text format on SKU cols (both sheets) + embed images on
-    # sheet 2 only.
+    # Post-process: text format en SKU cols + embed screenshots en columna Imagen + URL truncation.
     try:
         import openpyxl
         from openpyxl.drawing.image import Image as OpenpyxlImage
         from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, TwoCellAnchor
         from openpyxl.utils import get_column_letter
+        from ._excel_utils import apply_url_truncation
 
         wb = openpyxl.load_workbook(output_path)
+        ws = wb["Datos"]
+        headers = {cell.value: cell.column for cell in ws[1]}
 
-        def _force_text_skus(ws):
-            headers = {cell.value: cell.column for cell in ws[1]}
-            for col_name in ("SKU Easy", "SKU Sodimac"):
-                col_idx = headers.get(col_name)
-                if not col_idx:
-                    continue
-                for row in ws.iter_rows(min_row=2, min_col=col_idx, max_col=col_idx):
-                    for cell in row:
-                        if cell.value is None or cell.value == "":
-                            continue
-                        s = str(cell.value)
-                        if s.endswith(".0") and s[:-2].isdigit():
-                            s = s[:-2]
-                        cell.value = s
-                        cell.number_format = "@"
-
-        for sheet_name in ("Datos", "Con fotos"):
-            if sheet_name in wb.sheetnames:
-                _force_text_skus(wb[sheet_name])
-
-        # Embed images only in "Con fotos".
-        if "Con fotos" in wb.sheetnames:
-            ws = wb["Con fotos"]
-            headers = {cell.value: cell.column for cell in ws[1]}
-            screenshot_col = headers.get("Screenshot tarjeta")
-            if screenshot_col:
-                ws.column_dimensions[get_column_letter(screenshot_col)].width = 26
-                for i, path in enumerate(screenshot_paths):
-                    if not path or not Path(path).exists():
+        # SKUs como texto
+        for col_name in ("SKU Easy", "SKU Sodimac"):
+            col_idx = headers.get(col_name)
+            if not col_idx:
+                continue
+            for row in ws.iter_rows(min_row=2, min_col=col_idx, max_col=col_idx):
+                for cell in row:
+                    if cell.value is None or cell.value == "":
                         continue
-                    ri = i + 2  # 1-based + header
-                    ws.row_dimensions[ri].height = 160
-                    try:
-                        img = OpenpyxlImage(path); img.width = 170; img.height = 200
-                        img.anchor = TwoCellAnchor(
-                            editAs="oneCell",
-                            _from=AnchorMarker(col=screenshot_col - 1, colOff=0, row=ri - 1, rowOff=0),
-                            to=AnchorMarker(col=screenshot_col, colOff=0, row=ri, rowOff=0),
-                        )
-                        ws.add_image(img)
-                    except Exception:
-                        pass
+                    s = str(cell.value)
+                    if s.endswith(".0") and s[:-2].isdigit():
+                        s = s[:-2]
+                    cell.value = s
+                    cell.number_format = "@"
+
+        # Embedder screenshots en columna Imagen
+        img_col_idx = headers.get("Imagen")
+        if img_col_idx:
+            ws.column_dimensions[get_column_letter(img_col_idx)].width = 26
+            for i, path in enumerate(screenshot_paths):
+                if not path or not Path(path).exists():
+                    continue
+                ri = i + 2
+                ws.row_dimensions[ri].height = 160
+                try:
+                    img = OpenpyxlImage(path); img.width = 170; img.height = 200
+                    img.anchor = TwoCellAnchor(
+                        editAs="oneCell",
+                        _from=AnchorMarker(col=img_col_idx - 1, colOff=0, row=ri - 1, rowOff=0),
+                        to=AnchorMarker(col=img_col_idx, colOff=0, row=ri, rowOff=0),
+                    )
+                    ws.add_image(img)
+                except Exception:
+                    pass
+
+        # URL truncado visual
+        url_col_idx = headers.get("URL")
+        if url_col_idx and img_col_idx:
+            apply_url_truncation(ws, url_col_idx, img_col_idx, url_width=40, total_rows=len(rows) + 1)
 
         wb.save(output_path)
     except Exception:
