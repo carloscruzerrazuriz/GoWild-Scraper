@@ -1,0 +1,12 @@
+# Dependencias de GoWild-Scraper. Instaladas automáticamente por el bootstrap
+# de cada notebook tras el git pull. Editar acá → llega a todos los usuarios
+# en su próximo Run all sin necesidad de redistribuir el .ipynb.
+playwright
+playwright-stealth
+nest_asyncio
+ipywidgets
+pandas
+openpyxl
+questionary
+rich
+requests
