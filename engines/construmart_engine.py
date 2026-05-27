@@ -1464,27 +1464,29 @@ OUTPUT_COLS = [
 
 
 def write_output(rows, output_path):
-    """Excel 1 hoja con columnas filtradas + Imagen al final (screenshots embedidos cuando existen)."""
+    """Excel 2 hojas: 'Datos' (sin imágenes, filtrable) y 'Con fotos' (screenshots embebidos)."""
     if not rows:
         raise ValueError("No hay filas para escribir.")
     from ._excel_utils import filter_and_reorder, apply_url_truncation
 
     df = pd.DataFrame(rows)
     df_data = filter_and_reorder(df, OUTPUT_COLS)
-    df_data["Imagen"] = ""
     df_data.to_excel(output_path, index=False, sheet_name="Datos")
 
     wb = openpyxl.load_workbook(output_path)
-    ws = wb["Datos"]
-    final_cols = list(df_data.columns)
-    img_col_idx = final_cols.index("Imagen") + 1
-    url_col_idx = final_cols.index("URL") + 1
-    ws.column_dimensions[openpyxl.utils.get_column_letter(img_col_idx)].width = 30
+    ws1 = wb["Datos"]
+    ws2 = wb.create_sheet("Con fotos")
+    photo_cols = OUTPUT_COLS + ["Imagen"]
+    ws2.append(photo_cols)
+    img_col_idx = len(photo_cols)
+    ws2.column_dimensions[openpyxl.utils.get_column_letter(img_col_idx)].width = 30
 
     for ri, rd in enumerate(rows, start=2):
+        for ci, col in enumerate(OUTPUT_COLS, start=1):
+            ws2.cell(row=ri, column=ci, value=rd.get(col, ""))
         ip = rd.get("Image Path", "")
         if ip and os.path.exists(ip):
-            ws.row_dimensions[ri].height = 220
+            ws2.row_dimensions[ri].height = 220
             try:
                 img = OpenpyxlImage(ip); img.width = 170; img.height = 200
                 img.anchor = TwoCellAnchor(
@@ -1492,21 +1494,27 @@ def write_output(rows, output_path):
                     _from=AnchorMarker(col=img_col_idx - 1, colOff=0, row=ri - 1, rowOff=0),
                     to=AnchorMarker(col=img_col_idx, colOff=0, row=ri, rowOff=0),
                 )
-                ws.add_image(img)
+                ws2.add_image(img)
             except Exception:
                 pass
 
-    apply_url_truncation(ws, url_col_idx, img_col_idx, url_width=40, total_rows=len(rows) + 1)
+    # URL truncado en ambas hojas
+    url_col_idx_photos = photo_cols.index("URL") + 1
+    url_col_idx_datos = OUTPUT_COLS.index("URL") + 1
+    apply_url_truncation(ws2, url_col_idx_photos, img_col_idx, url_width=40, total_rows=len(rows) + 1)
+    apply_url_truncation(ws1, url_col_idx_datos, url_col_idx_datos + 1, url_width=40, total_rows=len(rows) + 1)
 
-    # Forzar columnas SKU como texto
-    for col_name in ("SKU Easy", "SKU Construmart"):
-        if col_name in final_cols:
-            cidx = final_cols.index(col_name) + 1
-            for ri in range(2, len(rows) + 2):
-                c = ws.cell(row=ri, column=cidx)
-                c.number_format = "@"
-                if c.value is not None:
-                    c.value = str(c.value)
+    # Forzar columnas SKU como texto en ambas hojas
+    for sheet in (ws1, ws2):
+        cols_in_sheet = OUTPUT_COLS if sheet is ws1 else photo_cols
+        for col_name in ("SKU Easy", "SKU Construmart"):
+            if col_name in cols_in_sheet:
+                cidx = cols_in_sheet.index(col_name) + 1
+                for ri in range(2, len(rows) + 2):
+                    c = sheet.cell(row=ri, column=cidx)
+                    c.number_format = "@"
+                    if c.value is not None:
+                        c.value = str(c.value)
 
     wb.save(output_path)
     return output_path
