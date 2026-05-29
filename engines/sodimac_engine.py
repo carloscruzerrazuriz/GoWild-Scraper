@@ -740,12 +740,18 @@ def write_output(df, desc_col, sku_col, easy_col, matches, output_path, stores=N
     for m in matches:
         by_sku_store[(str(m.get("sku_input", "")), str(m.get("store_id", "")))] = m
 
+    # Columnas opcionales: si el archivo de entrada no trae easy_col/desc_col
+    # (o el nombre no se detectó), usamos "" en vez de crashear con KeyError.
+    cols_present = set(df.columns)
+    has_easy = easy_col in cols_present
+    has_desc = desc_col in cols_present
+
     # Build long-format rows
     rows: list[dict] = []
     for _, src in df.iterrows():
         sku  = str(src[sku_col])
-        easy = src[easy_col]
-        desc = src[desc_col]
+        easy = src[easy_col] if has_easy else ""
+        desc = src[desc_col] if has_desc else ""
         for store in stores:
             m = by_sku_store.get((sku, store["id"]))
             base = {"SKU Easy": easy, "Desc. Producto": desc, "SKU Sodimac": sku,
