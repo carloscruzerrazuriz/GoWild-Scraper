@@ -7,12 +7,40 @@ Lo que ofrece:
     el estilo "texto clipeado" (no wrap, no shrink, no overflow). Para que Excel
     no derrame el texto a la columna siguiente, escribe " " en cualquier celda
     contigua que esté vacía.
+  - download_once(path, files_module): dispara files.download() evitando descargas
+    duplicadas del mismo archivo dentro de una ventana de debounce (Colab a veces
+    re-dispara el JS de descarga al re-renderizar un Output widget).
 """
 from __future__ import annotations
+
+import time as _time
 
 import openpyxl
 from openpyxl.styles import Alignment
 from openpyxl.utils import get_column_letter
+
+
+# path -> timestamp de la última descarga disparada
+_LAST_DOWNLOADS: dict[str, float] = {}
+
+
+def download_once(path, files_module, *, debounce_secs: float = 6.0) -> bool:
+    """Dispara files_module.download(path) una sola vez por ventana de debounce.
+
+    Devuelve True si disparó la descarga, False si la omitió por duplicado.
+    El botón "descargar de nuevo" funciona igual porque el click manual ocurre
+    bien después de la ventana de debounce.
+    """
+    if files_module is None:
+        return False
+    p = str(path)
+    now = _time.time()
+    last = _LAST_DOWNLOADS.get(p, 0.0)
+    if now - last < debounce_secs:
+        return False
+    _LAST_DOWNLOADS[p] = now
+    files_module.download(p)
+    return True
 
 
 def filter_and_reorder(df, columns: list[str]):

@@ -101,11 +101,12 @@ def run():
     def _show_redownload_button(out_widget, file_path):
         """Botón para re-descargar el Excel después del download automático."""
         if not IN_COLAB: return
+        from engines._excel_utils import download_once
         btn = widgets.Button(description="Descargar Excel de nuevo",
                               icon="download", button_style="info",
                               layout=widgets.Layout(width="260px"))
         def _do(_b, _p=str(file_path)):
-            try: colab_files.download(_p)
+            try: download_once(_p, colab_files)
             except Exception as _e:
                 with out_widget: print(f"download fallo: {_e}")
         btn.on_click(_do)
@@ -957,8 +958,10 @@ def run():
         if IN_COLAB:
             with result_out:
                 print("\n⬇️  Descargando Excel…")
-                colab_files.download(str(state["output_path"]))
-                _show_redownload_button(result_out, state["output_path"])
+            # download FUERA del contexto del Output → evita re-disparo al re-renderizar
+            from engines._excel_utils import download_once
+            download_once(state["output_path"], colab_files)
+            _show_redownload_button(result_out, state["output_path"])
         else:
             with result_out:
                 print(f"\n📁 Excel: {state['output_path']}")
@@ -1114,8 +1117,10 @@ def run():
                 print(f"   Excel: {state['output_path'].name}")
                 if IN_COLAB:
                     print("\n⬇️  Descargando Excel…")
-                    colab_files.download(str(state["output_path"]))
-                _show_redownload_button(result_out, state["output_path"])
+            if IN_COLAB:
+                from engines._excel_utils import download_once
+                download_once(state["output_path"], colab_files)
+            _show_redownload_button(result_out, state["output_path"])
 
     _refresh_resume_panel()
 

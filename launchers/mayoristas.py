@@ -620,7 +620,8 @@ def run():
                 except Exception: pass
                 if IN_COLAB and colab_files is not None:
                     try:
-                        colab_files.download(str(out_path))
+                        from engines._excel_utils import download_once
+                        download_once(str(out_path), colab_files)
                     except Exception as e:
                         with result_out:
                             print(f"download fallo: {e}")
@@ -630,7 +631,9 @@ def run():
                         layout=widgets.Layout(width="260px"),
                     )
                     def _redl(_p=str(out_path)):
-                        try: colab_files.download(_p)
+                        try:
+                            from engines._excel_utils import download_once
+                            download_once(_p, colab_files)
                         except Exception as _e:
                             with result_out: print(f"download fallo: {_e}")
                     _redl_btn.on_click(lambda _b: _redl())

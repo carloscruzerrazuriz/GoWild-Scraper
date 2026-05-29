@@ -744,14 +744,17 @@ def run():
                            output_file=output.name if output else "")
             if IN_COLAB:
                 print("\n⬇️  Descargando…")
-                colab_files.download(str(output))
+                from engines._excel_utils import download_once
+                download_once(str(output), colab_files)
                 _redl_btn = widgets.Button(
                     description="Descargar Excel de nuevo",
                     icon="download", button_style="info",
                     layout=widgets.Layout(width="260px"),
                 )
                 def _redl_cb(_b, _p=str(output)):
-                    try: colab_files.download(_p)
+                    try:
+                        from engines._excel_utils import download_once
+                        download_once(_p, colab_files)
                     except Exception as _e: print(f"download fallo: {_e}")
                 _redl_btn.on_click(_redl_cb)
                 display(_redl_btn)
@@ -1630,14 +1633,17 @@ def run():
                            output_file=output.name if output else "")
             if IN_COLAB:
                 print("\n⬇️  Descargando…")
-                colab_files.download(str(output))
+                from engines._excel_utils import download_once
+                download_once(str(output), colab_files)
                 _redl_btn = widgets.Button(
                     description="Descargar Excel de nuevo",
                     icon="download", button_style="info",
                     layout=widgets.Layout(width="260px"),
                 )
                 def _redl_cb(_b, _p=str(output)):
-                    try: colab_files.download(_p)
+                    try:
+                        from engines._excel_utils import download_once
+                        download_once(_p, colab_files)
                     except Exception as _e: print(f"download fallo: {_e}")
                 _redl_btn.on_click(_redl_cb)
                 display(_redl_btn)
@@ -2406,14 +2412,17 @@ def run():
                            output_file=output.name if output else "")
             if IN_COLAB:
                 print("\n⬇️  Descargando…")
-                colab_files.download(str(output))
+                from engines._excel_utils import download_once
+                download_once(str(output), colab_files)
                 _redl_btn = widgets.Button(
                     description="Descargar Excel de nuevo",
                     icon="download", button_style="info",
                     layout=widgets.Layout(width="260px"),
                 )
                 def _redl_cb(_b, _p=str(output)):
-                    try: colab_files.download(_p)
+                    try:
+                        from engines._excel_utils import download_once
+                        download_once(_p, colab_files)
                     except Exception as _e: print(f"download fallo: {_e}")
                 _redl_btn.on_click(_redl_cb)
                 display(_redl_btn)
