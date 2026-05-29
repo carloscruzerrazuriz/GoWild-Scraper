@@ -521,10 +521,12 @@ def run():
         t0 = time.time()
         async with Stealth().use_async(async_playwright()) as pw:
             browser = await pw.chromium.launch(headless=True)
+            # Contexto idéntico al de Maestra Sección (que sí logra fijar zona).
+            # No usar locale/timezone: hacen que Sodimac pre-fije ubicación y el
+            # botón "Ingresa tu ubicación" no aparezca → set_zone falla.
             ctx = await browser.new_context(
                 viewport={"width": 1280, "height": 900}, color_scheme="light",
                 user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                locale="es-CL", timezone_id="America/Santiago",
             )
             page = await ctx.new_page()
 
@@ -693,7 +695,7 @@ def run():
     footer = widgets.HTML(
         "<div style='margin-top:1.5rem;padding-top:.6rem;border-top:1px solid #e0e0e0;"
         "text-align:right;color:#aaa;font-size:.75em;font-family:sans-serif;font-style:italic;'>"
-        "Precios Mayoristas - landing Sodimac /seleccion/ventas-por-mayor</div>"
+        "Precios Mayoristas — Carlos Cruz E.</div>"
     )
 
     _refresh_resume_panel()
