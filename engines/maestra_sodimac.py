@@ -603,6 +603,37 @@ async def scrape_subcat(page, section_name, subcat_name, subcat_url, progress, p
             await page.evaluate("window.scrollBy(0, window.innerHeight)")
             await page.wait_for_timeout(250)
 
+        # Esperar a que los precios terminen de renderizar (client-side) antes de extraer.
+        # Misma carrera que en MK7: la grilla carga antes que los precios visibles del DOM.
+        # Poll hasta que el nº de tarjetas con precio se estabilice (2 ticks iguales >0) o
+        # timeout ~8s. La estabilización tolera productos sin stock que nunca muestran precio.
+        _price_ready_js = (
+            "() => {"
+            "  const cards = [...document.querySelectorAll(" + json.dumps(SELECTORS["card"]) + ")];"
+            "  let withPrice = 0;"
+            "  for (const c of cards) {"
+            "    const spans = [...c.querySelectorAll(" + json.dumps(SELECTORS["price_span"]) + ")];"
+            "    if (spans.some(s => /\\$/.test((s.innerText || '')))) withPrice++;"
+            "  }"
+            "  return {total: cards.length, withPrice};"
+            "}"
+        )
+        _prev_count, _stable_ticks = -1, 0
+        for _ in range(16):  # 16 * 500ms = 8s máx
+            try:
+                _stat = await page.evaluate(_price_ready_js)
+            except Exception:
+                _stat = None
+            _cur = _stat.get("withPrice", 0) if _stat else 0
+            if _cur > 0 and _cur == _prev_count:
+                _stable_ticks += 1
+                if _stable_ticks >= 2:
+                    break
+            else:
+                _stable_ticks = 0
+            _prev_count = _cur
+            await page.wait_for_timeout(500)
+
         # ONE evaluate per page extracts all cards in the current grid.
         page_data = await page.evaluate(extract_js, {"sel": SELECTORS, "section": section_name, "subcat": subcat_name})
 

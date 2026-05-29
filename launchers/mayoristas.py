@@ -172,6 +172,34 @@ def run():
                 await page.evaluate("window.scrollBy(0, window.innerHeight)")
                 await page.wait_for_timeout(250)
 
+            # Esperar render de precios antes de extraer (misma carrera JSON/DOM que MK7).
+            _price_ready_js = (
+                "() => {"
+                "  const cards = [...document.querySelectorAll(" + json.dumps(SELECTORS["card"]) + ")];"
+                "  let withPrice = 0;"
+                "  for (const c of cards) {"
+                "    const spans = [...c.querySelectorAll(" + json.dumps(SELECTORS["price_span"]) + ")];"
+                "    if (spans.some(s => /\\$/.test((s.innerText || '')))) withPrice++;"
+                "  }"
+                "  return {total: cards.length, withPrice};"
+                "}"
+            )
+            _prev_count, _stable_ticks = -1, 0
+            for _ in range(16):
+                try:
+                    _stat = await page.evaluate(_price_ready_js)
+                except Exception:
+                    _stat = None
+                _cur = _stat.get("withPrice", 0) if _stat else 0
+                if _cur > 0 and _cur == _prev_count:
+                    _stable_ticks += 1
+                    if _stable_ticks >= 2:
+                        break
+                else:
+                    _stable_ticks = 0
+                _prev_count = _cur
+                await page.wait_for_timeout(500)
+
             # Extraer cards (mismo JS que scraper Sodimac)
             page_data = await page.evaluate(extract_js, {"sel": SELECTORS, "section": SECTION_NAME, "subcat": SUBCAT_NAME})
 
