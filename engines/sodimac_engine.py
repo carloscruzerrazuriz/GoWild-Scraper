@@ -416,6 +416,37 @@ async def search_batch(
     await page.evaluate("window.scrollTo(0, 0)")
     await page.wait_for_timeout(400)
 
+    # OPCIÓN A: esperar a que los precios terminen de renderizar (client-side)
+    # antes de extraer. Causa raíz de las filas en blanco: el __NEXT_DATA__ (JSON)
+    # llega antes que los precios visibles del DOM, y la extracción ganaba la carrera.
+    # Estrategia: poll hasta que el nº de tarjetas con precio se ESTABILICE
+    # (2 ticks iguales y >0) o se alcance el timeout (~8s). La estabilización
+    # tolera productos sin stock que legítimamente nunca muestran precio.
+    _price_ready_js = r"""() => {
+        const cards = [...document.querySelectorAll('div[class*="grid-pod"]')];
+        let withPrice = 0;
+        for (const c of cards) {
+            const spans = [...c.querySelectorAll('.prices-0 span[class*="copy"], [class*="prices"] span[class*="copy"]')];
+            if (spans.some(s => /\$/.test((s.innerText || '')))) withPrice++;
+        }
+        return {total: cards.length, withPrice};
+    }"""
+    _prev_count, _stable_ticks = -1, 0
+    for _ in range(16):  # 16 * 500ms = 8s máx
+        try:
+            _stat = await page.evaluate(_price_ready_js)
+        except Exception:
+            _stat = None
+        _cur = _stat.get("withPrice", 0) if _stat else 0
+        if _cur > 0 and _cur == _prev_count:
+            _stable_ticks += 1
+            if _stable_ticks >= 2:
+                break
+        else:
+            _stable_ticks = 0
+        _prev_count = _cur
+        await page.wait_for_timeout(500)
+
     if screenshot_dir:
         screenshot_dir = Path(screenshot_dir)
         screenshot_dir.mkdir(parents=True, exist_ok=True)
