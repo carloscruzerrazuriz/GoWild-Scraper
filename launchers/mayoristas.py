@@ -60,8 +60,20 @@ def run():
             pass
 
     OUTPUT_DIR = Path.cwd()
+    # Checkpoints en Google Drive del usuario para que sobrevivan reinicios de la VM.
+    # Si no se puede montar Drive (fuera de Colab), cae al filesystem efímero.
     CHECKPOINT_DIR = OUTPUT_DIR / "_pm_checkpoints"
-    CHECKPOINT_DIR.mkdir(exist_ok=True)
+    try:
+        if IN_COLAB:
+            from google.colab import drive as _drive
+            if not os.path.isdir("/content/drive/MyDrive"):
+                _drive.mount("/content/drive", force_remount=False)
+            _drv = Path("/content/drive/MyDrive/pm_scraper_checkpoints")
+            _drv.mkdir(parents=True, exist_ok=True)
+            CHECKPOINT_DIR = _drv
+    except Exception as _e:
+        print(f"⚠️ No se pudo montar Drive para checkpoints ({_e}); usando filesystem efímero.")
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 
     # Engine Sodimac importado desde engines/ (refactor v2.0: ya no se embebe inline).
     # Expone TODO menos los dunders (__name__, __doc__, etc.) — las funciones internas
@@ -531,7 +543,7 @@ def run():
                     _save_checkpoint(cp_path, ckpt)
 
                     try:
-                        ok = await set_zone_with_retry(page, store["region"], store["comuna"])
+                        ok = await set_zone_with_retry(page, store["region"], store["comuna"], retries=4)
                     except Exception as e:
                         ok = False
                         live_status.value = f"<span style='color:#c0392b'>Error set_zone {store['name']}: {e}</span>"

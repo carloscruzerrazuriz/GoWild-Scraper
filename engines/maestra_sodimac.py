@@ -237,13 +237,32 @@ async def _type_autocomplete(page, placeholder, value):
 async def set_zone(page, region, comuna):
     await page.goto(f"{BASE_URL}/", wait_until="domcontentloaded", timeout=60000)
     await page.wait_for_timeout(2000)
-    opened = await page.evaluate("""() => {
-        const el = [...document.querySelectorAll('*')].find(e => {
-            const t = (e.innerText || '').trim();
-            return e.offsetHeight > 0 && (t === 'Ingresa tu ubicación' || /^Entrega en/.test(t));
-        });
-        if (el) { el.click(); return true; } return false;
+
+    # Descartar banners de cookies/consentimiento que tapan el botón de ubicación.
+    await page.evaluate("""() => {
+        const kill = (el) => { try { el.click(); } catch(e){} };
+        // Botones típicos de aceptar cookies en Sodimac/OneTrust
+        const btns = [...document.querySelectorAll('button, a')];
+        const acc = btns.find(b => /acept|entend|de acuerdo|cerrar/i.test((b.innerText||'').trim()) && b.offsetHeight > 0);
+        if (acc) kill(acc);
+        // Remover overlays/modales que bloqueen clicks
+        document.querySelectorAll('#onetrust-banner-sdk, [class*="cookie"], [class*="Modal"], [class*="overlay"], [data-testid="overlay"]')
+            .forEach(o => { try { o.remove(); } catch(e){} });
     }""")
+
+    # Polling: el botón de ubicación puede tardar en aparecer (hasta ~10s).
+    opened = False
+    for _ in range(20):
+        opened = await page.evaluate("""() => {
+            const el = [...document.querySelectorAll('*')].find(e => {
+                const t = (e.innerText || '').trim();
+                return e.offsetHeight > 0 && (t === 'Ingresa tu ubicación' || /^Entrega en/.test(t));
+            });
+            if (el) { el.click(); return true; } return false;
+        }""")
+        if opened:
+            break
+        await page.wait_for_timeout(500)
     if not opened:
         return False
     await page.wait_for_timeout(1500)
