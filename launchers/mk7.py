@@ -50,7 +50,7 @@ def run():
 
     # ─── Telemetry: log activity al Sheet ──────────────────────────────
     import uuid as _uuid
-    _ACTIVITY_URL = "https://script.google.com/macros/s/AKfycbwYNVObEiq8NSslHNsPA3vcNsfPPf8zo6oLAOLVXEGQ7cqT_FwA4PxVxjNaEqt_566Z/exec"
+    _ACTIVITY_URL = "https://script.google.com/macros/s/AKfycbzALm18Xuw9c7U0tcAE0u1lPvq1j4P5kCxIJvdkDuG5MLVrqKyWd5qt-Kjb-TSP3B82/exec"
     _ACTIVITY_TOKEN = "6kT2hQjLp_VxR8mN3wYsZ-aF7bGdEcU4"
     _BUILD_HASH = "5c4dba0ea3acb1375cdffccab4d63aad371fe0124f0b915fe6e05dd30d3f0577"
     _COLAB_TAG = "mk7"
