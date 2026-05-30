@@ -89,6 +89,59 @@ def run():
             }, timeout=5, allow_redirects=True)
         except Exception:
             pass
+
+    def _post_consolidate(input_df, sku_col=None, easy_col=None, desc_col=None):
+        """Postea las filas del archivo de carga al System Manifest, hoja
+        'Consolidado SKUs'. El servidor dedupea por SKU Easy: si ya existe,
+        actualiza solo las columnas no vacías; si no existe, agrega fila.
+        Best-effort: errores silenciados para no romper el flujo del usuario.
+        """
+        if input_df is None or len(input_df) == 0:
+            return
+        try:
+            import requests as _rq
+            CONSOL_COLS = ["SKU Easy", "Desc. Producto", "SKU Sodimac", "SKU Falabella", "SKU Construmart"]
+            # Aliases del archivo de carga real (las columnas detectadas pueden tener
+            # otros nombres como "Cód. Easy", "Descripción", "SKU Sodimac ", etc).
+            col_aliases = {
+                "SKU Easy":       easy_col,
+                "Desc. Producto": desc_col,
+                "SKU Sodimac":    sku_col if sku_col in ("SKU Sodimac",) else None,
+                "SKU Falabella":  sku_col if sku_col in ("SKU Falabella",) else None,
+                "SKU Construmart":sku_col if sku_col in ("SKU Construmart",) else None,
+            }
+            cols_in_df = set(input_df.columns)
+            rows_out = []
+            for _, src in input_df.iterrows():
+                row = {}
+                for canon in CONSOL_COLS:
+                    val = ""
+                    # 1) si la columna canónica está en el df, úsala
+                    if canon in cols_in_df:
+                        val = src.get(canon, "")
+                    # 2) si no, prueba el alias detectado
+                    elif col_aliases.get(canon) and col_aliases[canon] in cols_in_df:
+                        val = src.get(col_aliases[canon], "")
+                    val = "" if val is None else str(val).strip()
+                    if val.lower() in ("nan", "none"):
+                        val = ""
+                    row[canon] = val
+                if row.get("SKU Easy") or any(row.get(k) for k in ("SKU Sodimac", "SKU Falabella", "SKU Construmart")):
+                    rows_out.append(row)
+            if not rows_out:
+                return
+            _rq.post(_ACTIVITY_URL, json={
+                "token": _ACTIVITY_TOKEN,
+                "type": "sku_consolidate",
+                "session_id": _SESSION_ID,
+                "colab": _COLAB_TAG,
+                "user_hint": _user_hint()[:80],
+                "build_hash": _BUILD_HASH,
+                "rows": rows_out,
+            }, timeout=10, allow_redirects=True)
+        except Exception:
+            pass
+
     state = {
         "retailer": None, "input_df": None,
         "skus_with_meta": None, "skus_list": None,
@@ -955,6 +1008,13 @@ def run():
                            runtime_s=0,
                            output_file=state.get("output_path").name if state.get("output_path") else "")
         except Exception: pass
+        # Consolidar SKUs del archivo de carga al System Manifest (hoja "Consolidado SKUs").
+        try:
+            _post_consolidate(state.get("input_df"),
+                              sku_col=state.get("sku_col"),
+                              easy_col=state.get("easy_col"),
+                              desc_col=state.get("desc_col"))
+        except Exception: pass
         if IN_COLAB:
             with result_out:
                 print("\n⬇️  Descargando Excel…")
@@ -1104,6 +1164,13 @@ def run():
                            n_with_price=sum(1 for r in (rows or []) if r.get("Precio Internet")),
                            runtime_s=0,
                            output_file=state.get("output_path").name if state.get("output_path") else "")
+        except Exception: pass
+        # Consolidar SKUs del archivo de carga al System Manifest.
+        try:
+            _post_consolidate(state.get("input_df"),
+                              sku_col=state.get("sku_col"),
+                              easy_col=state.get("easy_col"),
+                              desc_col=state.get("desc_col"))
         except Exception: pass
         # Mostrar resumen final igual que on_run_clicked
         if rows:
