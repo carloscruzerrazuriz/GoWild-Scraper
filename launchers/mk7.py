@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Carlos Cruz Errazuriz. All rights reserved.
+# Proprietary - see LICENSE file. No unauthorized use, redistribution, or reverse engineering.
 """MK7 — Buscador unificado de SKUs (Sodimac · Falabella · Construmart).
 
 Invocado desde el notebook MK7.ipynb vía `from launchers import boot; boot("mk7")`.

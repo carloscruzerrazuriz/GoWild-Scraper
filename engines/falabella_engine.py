@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Carlos Cruz Errazuriz. All rights reserved.
+# Proprietary - see LICENSE file. No unauthorized use, redistribution, or reverse engineering.
 """Scraper interactivo de productos vendidos por Falabella, por sección.
 
 Flujo:

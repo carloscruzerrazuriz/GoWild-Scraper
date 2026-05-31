@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Carlos Cruz Errazuriz. All rights reserved.
+# Proprietary - see LICENSE file. No unauthorized use, redistribution, or reverse engineering.
 """GoWild-Scraper launcher dispatcher.
 
 Each notebook calls `boot("<tool_name>")` to launch its UI. The launcher modules

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Carlos Cruz Errazuriz. All rights reserved.
+# Proprietary - see LICENSE file. No unauthorized use, redistribution, or reverse engineering.
 """Maestra Sección — Sodimac/Falabella/Construmart.
 
 Invocado desde Maestra_Seccion.ipynb vía `from launchers import boot; boot("maestra")`.

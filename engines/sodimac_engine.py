@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Carlos Cruz Errazuriz. All rights reserved.
+# Proprietary - see LICENSE file. No unauthorized use, redistribution, or reverse engineering.
 # === Scrapper SKU — código del módulo ===
 # (versión sincronizada desde scrapper_mk6.py)
 

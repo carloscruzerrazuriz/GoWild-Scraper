@@ -1,0 +1,39 @@
+GoWild Scraper — Proprietary License
+
+Copyright (c) 2026 Carlos Cruz Errazuriz. All rights reserved.
+
+This software, including its source code, compiled binaries, documentation,
+and any associated files (collectively, "the Software"), is the proprietary
+and confidential property of Carlos Cruz Errazuriz.
+
+PERMITTED USES
+  - Use of the Software is permitted ONLY by individuals who have received
+    explicit written authorization from the copyright holder.
+  - Authorized users may execute the Software for its intended purpose
+    (price/catalog scraping) within their own Google Colab session.
+
+PROHIBITED USES (without prior written consent of the copyright holder)
+  - Redistribution of the Software, in whole or in part, in any form.
+  - Modification, adaptation, translation, or creation of derivative works.
+  - Reverse engineering, decompilation, or disassembly of the Software.
+  - Commercial use, sale, sublicensing, or rental of the Software.
+  - Removal or alteration of copyright notices, proprietary markings,
+    or watermarks embedded in the Software.
+  - Use of the Software's source code, algorithms, or techniques in any
+    other software project.
+
+NO WARRANTY
+  The Software is provided "AS IS", without warranty of any kind, express
+  or implied, including but not limited to the warranties of merchantability,
+  fitness for a particular purpose, and noninfringement. In no event shall
+  the copyright holder be liable for any claim, damages, or other liability
+  arising from the use of the Software.
+
+ENFORCEMENT
+  Unauthorized use, reproduction, or distribution of the Software may result
+  in civil and criminal penalties, and will be prosecuted to the maximum
+  extent possible under applicable law.
+
+CONTACT
+  For licensing inquiries, please contact:
+  carlos.cruz.errazuriz@gmail.com
