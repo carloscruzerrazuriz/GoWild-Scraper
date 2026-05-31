@@ -922,7 +922,7 @@ def run():
     footer = widgets.HTML(
         "<div style='margin-top:1.5rem;padding-top:.6rem;border-top:1px solid #e0e0e0;"
         "text-align:right;color:#aaa;font-size:.75em;font-family:sans-serif;font-style:italic;'>"
-        "Carlos Cruz E.</div>"
+        "Maestra Sección — Carlos Cruz E.<br/><span style='font-size:.85em;'>Copyright (c) 2026 Carlos Cruz Errazuriz · All rights reserved · Proprietary — No unauthorized use or distribution</span></div>"
     )
 
     update_stores()
@@ -1776,7 +1776,7 @@ def run():
     footer = widgets.HTML(
         "<div style='margin-top:1.5rem;padding-top:.6rem;border-top:1px solid #e0e0e0;"
         "text-align:right;color:#aaa;font-size:.75em;font-family:sans-serif;font-style:italic;'>"
-        "Carlos Cruz E.</div>"
+        "Maestra Sección — Carlos Cruz E.<br/><span style='font-size:.85em;'>Copyright (c) 2026 Carlos Cruz Errazuriz · All rights reserved · Proprietary — No unauthorized use or distribution</span></div>"
     )
 
     update_stores()
@@ -2527,7 +2527,7 @@ def run():
     footer = widgets.HTML(
         "<div style='margin-top:1.5rem;padding-top:.6rem;border-top:1px solid #e0e0e0;"
         "text-align:right;color:#aaa;font-size:.75em;font-family:sans-serif;font-style:italic;'>"
-        "Carlos Cruz E.</div>"
+        "Maestra Sección — Carlos Cruz E.<br/><span style='font-size:.85em;'>Copyright (c) 2026 Carlos Cruz Errazuriz · All rights reserved · Proprietary — No unauthorized use or distribution</span></div>"
     )
 
     update_stores()
