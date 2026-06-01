@@ -181,22 +181,42 @@ async def _type_autocomplete(page: Page, placeholder: str, value: str) -> bool:
 async def set_zone(page: Page, region: str, comuna: str) -> bool:
     await page.goto(f"{BASE_URL}/", wait_until="domcontentloaded", timeout=60000)
     await page.wait_for_timeout(2000)
-    opened = await page.evaluate("""() => {
-        // 1) Selector específico nuevo (UI 2026): p dentro de Zone-module_zone-lable
-        const p = document.querySelector('p[class*="Zone-module_zone-lable"]');
-        if (p && p.offsetHeight > 0) { p.click(); return true; }
-        // 2) Fallback al método legacy: buscar elemento con texto exacto
-        const el = [...document.querySelectorAll('*')].find(e => {
-            const t = (e.innerText || '').trim();
-            return e.offsetHeight > 0 && (
-                t === 'Ingresa tu ubicación'
-                || /^Entrega en/.test(t)
-                || /^Despacha en/.test(t)
-                || /^Envía a/.test(t)
-            );
-        });
-        if (el) { el.click(); return true; } return false;
+
+    # Descartar banners de cookies/consentimiento (OneTrust et al.) que tapan el
+    # botón de ubicación. En Colab/headless interceptan el click y set_zone fallaba
+    # de forma intermitente. Misma robustez que la set_zone de Maestra (fix 8710e7d).
+    await page.evaluate("""() => {
+        const btns = [...document.querySelectorAll('button, a')];
+        const acc = btns.find(b => /acept|entend|de acuerdo|cerrar/i.test((b.innerText||'').trim()) && b.offsetHeight > 0);
+        if (acc) { try { acc.click(); } catch(e){} }
+        document.querySelectorAll('#onetrust-banner-sdk, [class*="cookie"], [class*="Modal"], [class*="overlay"], [data-testid="overlay"]')
+            .forEach(o => { try { o.remove(); } catch(e){} });
     }""")
+
+    # Polling: el botón de ubicación puede tardar en aparecer (hasta ~10s) según la
+    # velocidad de la VM / latencia a sodimac.cl. Antes se esperaba 2s fijos y se
+    # abortaba — causa raíz de los "falló set_zone" en máquinas más lentas.
+    opened = False
+    for _ in range(20):
+        opened = await page.evaluate("""() => {
+            // 1) Selector específico nuevo (UI 2026): p dentro de Zone-module_zone-lable
+            const p = document.querySelector('p[class*="Zone-module_zone-lable"]');
+            if (p && p.offsetHeight > 0) { p.click(); return true; }
+            // 2) Fallback al método legacy: buscar elemento con texto exacto
+            const el = [...document.querySelectorAll('*')].find(e => {
+                const t = (e.innerText || '').trim();
+                return e.offsetHeight > 0 && (
+                    t === 'Ingresa tu ubicación'
+                    || /^Entrega en/.test(t)
+                    || /^Despacha en/.test(t)
+                    || /^Envía a/.test(t)
+                );
+            });
+            if (el) { el.click(); return true; } return false;
+        }""")
+        if opened:
+            break
+        await page.wait_for_timeout(500)
     if not opened:
         return False
     await page.wait_for_timeout(1500)
