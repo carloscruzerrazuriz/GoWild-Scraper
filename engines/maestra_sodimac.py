@@ -73,6 +73,9 @@ SELECTORS = {
 }
 
 SODIMAC_SELLER_FACET = "facetSelected=true&f.derived.variant.sellerId=SODIMAC"
+# Facet del toggle "CYBER DAY" del sitio (verificado 2026-06-01 vía DOM: data-facet-type
+# f.derived.variant.activeEvent_SO_COM, facetValue "true"). Filtra a productos en la promo.
+SODIMAC_CYBERDAY_FACET = "f.derived.variant.activeEvent_SO_COM=true"
 
 
 class PartialWriter:
@@ -530,7 +533,7 @@ async def _detect_breadcrumb(page):
 
 async def scrape_subcat(page, section_name, subcat_name, subcat_url, progress, page_task,
                         capture_screenshots=True, only_sodimac=True, page_progress_cb=None,
-                        auto_breadcrumb=False):
+                        auto_breadcrumb=False, only_cyberday=False):
     """Scrapea una subcategoría paginando.
 
     Devuelve dict: {
@@ -542,9 +545,13 @@ async def scrape_subcat(page, section_name, subcat_name, subcat_url, progress, p
     }
     """
     result = {"rows": [], "pages": 0, "truncated": False, "failed": False, "empty": False}
-    if only_sodimac:
+    if only_sodimac or only_cyberday:
+        # Ambos facets comparten el prefijo facetSelected=true; se concatenan con &.
+        facet = SODIMAC_SELLER_FACET if only_sodimac else "facetSelected=true"
+        if only_cyberday:
+            facet = f"{facet}&{SODIMAC_CYBERDAY_FACET}"
         sep = "&" if "?" in subcat_url else "?"
-        subcat_url = f"{subcat_url}{sep}{SODIMAC_SELLER_FACET}"
+        subcat_url = f"{subcat_url}{sep}{facet}"
 
     if not await _safe_goto(page, subcat_url):
         result["failed"] = True

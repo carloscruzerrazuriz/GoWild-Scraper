@@ -1,5 +1,5 @@
 {
-  "version": "2.1.0",
+  "version": "2.2.0",
   "launcher_schema": "1.0",
   "architecture": "thin-launcher",
   "notes": "Notebooks delgados (~3 celdas) + lógica en launchers/*.py. Updates via git pull automáticos. Si launcher_schema cambia, hay que reenviar el .ipynb a los usuarios."
