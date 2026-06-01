@@ -3,7 +3,7 @@
 """Scraper interactivo de productos vendidos por Sodimac, por sección.
 
 Flujo:
-  1. Setea zona Metropolitana / La Florida (modificable).
+  1. Setea zona Metropolitana / Cerrillos (modificable).
   2. Descubre las secciones top-level del megamenu de Sodimac.
   3. El usuario elige una sección con un menú interactivo.
   4. Descubre subcategorías de la sección desde __NEXT_DATA__.
@@ -52,7 +52,7 @@ SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
 PARTIAL_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_REGION = "Metropolitana"
-DEFAULT_COMUNA = "La Florida"
+DEFAULT_COMUNA = "Cerrillos"
 MAX_PAGES_PER_SUBCAT = 200
 
 # All Sodimac DOM selectors live here — when the front rebuilds, fix them in one place.
@@ -774,7 +774,7 @@ def pick_stores():
     """Devuelve la lista de tiendas seleccionadas por el usuario."""
     rm_stores = [s for s in ALL_STORES if s["region"] == "Metropolitana"]
     presets = [
-        ("Solo La Florida (default — más rápido)", [s for s in ALL_STORES if s["id"] == "E510"]),
+        ("Solo Cerrillos (default — más rápido)", [s for s in ALL_STORES if s["id"] == "E522"]),
         (f"Todas RM ({len(rm_stores)} tiendas, ~2-3h)", rm_stores),
         (f"Todas Chile ({len(ALL_STORES)} tiendas, ~7h)", ALL_STORES),
         ("Personalizado (elegir manualmente)", None),
@@ -794,7 +794,7 @@ def pick_stores():
         questionary.Choice(
             title=f"{s['id']}  {s['name']:<14}  ({s['region']} / {s['comuna']})",
             value=s,
-            checked=(s["id"] == "E510"),
+            checked=(s["id"] == "E522"),
         )
         for s in ALL_STORES
     ]

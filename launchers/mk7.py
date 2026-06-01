@@ -513,13 +513,13 @@ def run():
             all_st = ALL_STORES_SODIMAC
             rm = [s for s in all_st if s["region"] == "Metropolitana"]
             presets = {
-                "Solo La Florida (default — más rápido)": [s for s in all_st if s["id"] == "E510"],
+                "Solo Cerrillos (default — más rápido)": [s for s in all_st if s["id"] == "E522"],
                 f"Todas RM ({len(rm)} tiendas)": rm,
                 f"Todas Chile ({len(all_st)} tiendas)": all_st,
                 "Personalizado": None,
             }
             labeler = lambda s: f"{s['id']}  {s['name']:<14}  ({s.get('comuna','')}, {s['region']})"
-            default_id = "E510"
+            default_id = "E522"
         elif retailer == "falabella":
             all_st = ALL_STORES_FALABELLA
             rm = [s for s in all_st if s["region"] == "Metropolitana"]

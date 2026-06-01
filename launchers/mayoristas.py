@@ -343,14 +343,14 @@ def run():
     # ─── Paso 1: Tiendas ────────────────────────────────────────
     rm_stores = [s for s in ALL_STORES if s["region"] == "Metropolitana"]
     PRESETS = {
-        "Solo La Florida (mas rapido)": [s for s in ALL_STORES if s["id"] == "E510"],
+        "Solo Cerrillos (mas rapido)": [s for s in ALL_STORES if s["id"] == "E522"],
         f"Todas RM ({len(rm_stores)} tiendas)": rm_stores,
         f"Todas Chile ({len(ALL_STORES)} tiendas)": ALL_STORES,
         "Personalizado": None,
     }
     preset_radio = widgets.RadioButtons(
         options=list(PRESETS.keys()),
-        value="Solo La Florida (mas rapido)",
+        value="Solo Cerrillos (mas rapido)",
         description="Preset:",
         style={"description_width": "initial"},
         layout=widgets.Layout(width="auto"),
@@ -391,7 +391,7 @@ def run():
         if preset is None:
             store_panel_wrap.layout.display = ""
             sel = [b._payload for b in store_boxes if b.value]
-            state["selected_stores"] = sel if sel else [s for s in ALL_STORES if s["id"] == "E510"]
+            state["selected_stores"] = sel if sel else [s for s in ALL_STORES if s["id"] == "E522"]
         else:
             store_panel_wrap.layout.display = "none"
             state["selected_stores"] = preset
