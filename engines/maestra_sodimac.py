@@ -545,11 +545,16 @@ async def scrape_subcat(page, section_name, subcat_name, subcat_url, progress, p
     }
     """
     result = {"rows": [], "pages": 0, "truncated": False, "failed": False, "empty": False}
-    if only_sodimac or only_cyberday:
-        # Ambos facets comparten el prefijo facetSelected=true; se concatenan con &.
-        facet = SODIMAC_SELLER_FACET if only_sodimac else "facetSelected=true"
-        if only_cyberday:
-            facet = f"{facet}&{SODIMAC_CYBERDAY_FACET}"
+    # CYBER DAY NO se combina con el seller facet: la combinación rompe la PLP de
+    # Sodimac en ciertas subcategorías. El filtro "solo Sodimac" no se pierde: el
+    # launcher descarta las filas no-Sodimac en post-proceso (filtra por Vendedor).
+    if only_cyberday:
+        facet = f"facetSelected=true&{SODIMAC_CYBERDAY_FACET}"
+    elif only_sodimac:
+        facet = SODIMAC_SELLER_FACET
+    else:
+        facet = None
+    if facet:
         sep = "&" if "?" in subcat_url else "?"
         subcat_url = f"{subcat_url}{sep}{facet}"
 
