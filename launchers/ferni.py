@@ -116,16 +116,33 @@ def run():
     </style>
     """))
 
-    # ─── Template de carga embebido (SKU Easy, Desc. Producto, SKU Sodimac) ──
+    # ─── Template de carga embebido (mismo diseño que el del MK7) ──────
     def _download_formato(_btn):
         from openpyxl import Workbook
-        wb = Workbook(); ws = wb.active; ws.title = "Carga"
+        from openpyxl.styles import PatternFill, Font, Alignment
+        wb = Workbook(); ws = wb.active; ws.title = "SKUs"
         ws.append(["SKU Easy", "Desc. Producto", "SKU Sodimac"])
-        ws.append(["", "Puerta terciada carpintera 90x200 (ejemplo)", "139566229"])
-        ws.append(["", "Puerta MDF Milano 60x200 (ejemplo)", "120822458"])
-        for row in ws.iter_rows(min_row=2, min_col=3, max_col=3):
-            for cell in row:
-                cell.number_format = "@"
+        # Filas de ejemplo (puertas reales).
+        ws.append(["E001", "Puerta Madera Terciada Carpintera 90x200 (ejemplo)", "139566229"])
+        ws.append(["E002", "Puerta MDF Milano 60x200 (ejemplo, oferta)", "120822458"])
+        ws.append(["E003", "Puerta Madera Terciada Carpintera 75x200 (ejemplo)", "139566225"])
+        # Cabecera estilo MK7: fondo azul pizarra + texto blanco negrita, centrado.
+        _fill = PatternFill("solid", fgColor="334E68")
+        _font = Font(color="FFFFFF", bold=True)
+        _align = Alignment(horizontal="center", vertical="center")
+        for c in range(1, 4):
+            cell = ws.cell(row=1, column=c)
+            cell.fill = _fill; cell.font = _font; cell.alignment = _align
+        # Anchos (proporción MK7).
+        ws.column_dimensions["A"].width = 12
+        ws.column_dimensions["B"].width = 55
+        ws.column_dimensions["C"].width = 16
+        # SKU Easy y SKU Sodimac como texto.
+        for col_idx in (1, 3):
+            for row in ws.iter_rows(min_row=2, min_col=col_idx, max_col=col_idx):
+                for cell in row:
+                    cell.number_format = "@"
+        ws.freeze_panes = "A2"
         path = OUTPUT_DIR / "formato_carga_puertas.xlsx"
         wb.save(path)
         if IN_COLAB:
