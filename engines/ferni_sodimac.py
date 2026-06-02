@@ -364,16 +364,32 @@ _EXTRACT_DOORS_JS = r"""(searchedSkus) => {
 }"""
 
 
+# Mapea cada card visible (div grid-pod) a su productId, leyendo el primer
+# segmento numérico del href /articulo/{productId}/... Sirve para ubicar la
+# card de cada puerta y sacarle la screenshot (como el MK7).
+_CARD_PID_JS = r"""(card) => {
+    const a = card.querySelector('a[href*="/articulo/"]');
+    if (!a) return '';
+    const m = (a.href || '').match(/\/articulo\/(\d+)/);
+    return m ? m[1] : '';
+}"""
+
+
 async def search_batch_doors(
     page: Page,
     guards: list[str],
     chunk: list[str],
     *,
+    screenshot_dir: Path = None,
     max_attempts: int = 3,
     expect_results: bool = True,
 ) -> dict:
     """Corre /buscar?Ntt={guards+chunk} y devuelve {sku: data} de las puertas
-    (medidas) matcheadas. La extracción se hace sobre el chunk real (sin guards)."""
+    (medidas) matcheadas. La extracción se hace sobre el chunk real (sin guards).
+
+    Si screenshot_dir está dado, además captura la screenshot de la card de cada
+    puerta (igual que el MK7) — una por productId, reutilizada para todas sus
+    medidas (varias medidas colapsan en la misma card)."""
     query_skus = [g for g in guards if g not in chunk] + chunk
     if not chunk:
         return {}
@@ -398,7 +414,57 @@ async def search_batch_doors(
     matches = (payload or {}).get("matches") or {}
     # Defensa: solo SKUs realmente pedidos en este chunk.
     chunkset = set(chunk)
-    return {k: v for k, v in matches.items() if k in chunkset}
+    matches = {k: v for k, v in matches.items() if k in chunkset}
+    if not matches:
+        return {}
+
+    # ── Screenshots de las cards (estilo MK7) ──────────────────────────
+    if screenshot_dir:
+        screenshot_dir = Path(screenshot_dir)
+        screenshot_dir.mkdir(parents=True, exist_ok=True)
+        # productIds que necesitamos fotografiar (uno por puerta matcheada).
+        want_pids = {str(v.get("product_id", "")) for v in matches.values() if v.get("product_id")}
+        if want_pids:
+            # Quitar overlays + lazy-load de las cards antes de capturar.
+            try:
+                await page.evaluate("""() => {
+                    document.querySelectorAll('[data-testid="overlay"], [class*="overlay"]')
+                        .forEach(o => { try { o.remove(); } catch (_) {} });
+                }""")
+                for _ in range(5):
+                    await page.evaluate("window.scrollBy(0, window.innerHeight)")
+                    await page.wait_for_timeout(250)
+                await page.evaluate("window.scrollTo(0, 0)")
+                await page.wait_for_timeout(400)
+            except Exception:
+                pass
+            # Mapear card → productId y capturar.
+            pid_to_path: dict[str, str] = {}
+            try:
+                cards = await page.query_selector_all('div[class*="grid-pod"]')
+            except Exception:
+                cards = []
+            for card in cards:
+                try:
+                    pid = (await card.evaluate(_CARD_PID_JS) or "").strip()
+                except Exception:
+                    pid = ""
+                if not pid or pid not in want_pids or pid in pid_to_path:
+                    continue
+                img_path = screenshot_dir / f"{re.sub(r'[^0-9]', '_', pid)}.jpg"
+                try:
+                    await card.scroll_into_view_if_needed()
+                    await page.wait_for_timeout(120)
+                    await card.screenshot(path=str(img_path), type="jpeg", quality=78)
+                    if img_path.exists() and img_path.stat().st_size > 0:
+                        pid_to_path[pid] = str(img_path)
+                except Exception:
+                    pass
+            # Adjuntar el path a cada match por su productId.
+            for v in matches.values():
+                v["screenshot_path"] = pid_to_path.get(str(v.get("product_id", "")), "")
+
+    return matches
 
 
 # ─────────────────────────────────────────  Multi-zone orchestrator  ──────
@@ -411,6 +477,7 @@ async def search_doors(
     guards: list[str] = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
     headless: bool = True,
+    screenshot_dir=None,
     progress_cb=None,
     skip_store_ids=None,
     on_match=None,
@@ -456,11 +523,13 @@ async def search_doors(
                                  "retried": retried})
                 return False
 
+            zone_shots = (Path(screenshot_dir) / store["id"]) if screenshot_dir else None
             found_in_zone = 0
             for i in range(0, n_skus, batch_size):
                 chunk = skus[i:i + batch_size]
                 try:
-                    batch_matches = await search_batch_doors(page, guards, chunk)
+                    batch_matches = await search_batch_doors(
+                        page, guards, chunk, screenshot_dir=zone_shots)
                 except Exception:
                     batch_matches = {}
                 found_here = 0
@@ -602,23 +671,8 @@ def read_input(path):
     return df, desc_col, sku_col, easy_col
 
 
-def _download_image(img_url, dest_path, *, timeout=20):
-    """Descarga la imagen de la variante a dest_path. Best-effort."""
-    if not img_url:
-        return False
-    try:
-        import requests
-        r = requests.get(img_url, timeout=timeout)
-        if r.status_code == 200 and r.content:
-            Path(dest_path).write_bytes(r.content)
-            return Path(dest_path).stat().st_size > 0
-    except Exception:
-        pass
-    return False
-
-
 def write_output(df, desc_col, sku_col, easy_col, matches, output_path, *,
-                 stores=None, image_dir=None, embed_images=True):
+                 stores=None, embed_images=True):
     """Combina los matches en un Excel long-format (una fila por SKU × zona).
 
     Columnas (la 'Medida' es la razón de ser de este robot):
@@ -634,19 +688,17 @@ def write_output(df, desc_col, sku_col, easy_col, matches, output_path, *,
      10. Precio Normal          (tachado, si hay oferta)
      11. Precio Internet        (precio exacto de ESA medida)
      12. % Descuento            (calculado)
-     13. Disponible
-     14. Nº Medidas             (cuántas medidas tiene esa puerta)
-     15. Todas las Medidas      (resumen medida: precio de todas)
-     16. URL                    (link directo a la variante)
-     17. Imagen                 (foto de la medida, hoja 'Con fotos')
+     13. Todas las Medidas      (resumen medida: precio de todas)
+     14. URL                    (link directo a la variante)
+     15. Imagen                 (screenshot de la card, hoja 'Con fotos')
     """
     if stores is None:
         stores = ALL_STORES
 
     EMPTY = {
         "marca": "", "descripcion": "", "vendedor": "", "medida": "",
-        "precio_internet": "", "precio_normal": "", "disponible": "",
-        "n_medidas": "", "todas_las_medidas": "", "url": "", "img_url": "",
+        "precio_internet": "", "precio_normal": "",
+        "todas_las_medidas": "", "url": "", "screenshot_path": "",
     }
 
     by_sku_store: dict[tuple[str, str], dict] = {}
@@ -684,13 +736,11 @@ def write_output(df, desc_col, sku_col, easy_col, matches, output_path, *,
     cols["Precio Normal"]        = [r["precio_normal"] for r in rows]
     cols["Precio Internet"]      = [r["precio_internet"] for r in rows]
     cols["% Descuento"]          = [_pct_descuento(r["precio_normal"], r["precio_internet"]) for r in rows]
-    cols["Disponible"]           = [r["disponible"] for r in rows]
-    cols["Nº Medidas"]           = [r["n_medidas"] for r in rows]
     cols["Todas las Medidas"]    = [r["todas_las_medidas"] for r in rows]
     cols["URL"]                  = [r["url"] for r in rows]
 
     out = pd.DataFrame(cols)
-    img_urls = [r["img_url"] for r in rows]
+    screenshot_paths = [r["screenshot_path"] for r in rows]
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         out.to_excel(writer, sheet_name="Datos", index=False)
@@ -727,26 +777,15 @@ def write_output(df, desc_col, sku_col, easy_col, matches, output_path, *,
             if sheet_name in wb.sheetnames:
                 _force_text_skus(wb[sheet_name])
 
+        # Embed screenshots de la card (estilo MK7) solo en 'Con fotos'.
         if embed_images and "Con fotos" in wb.sheetnames:
             ws = wb["Con fotos"]
             headers = {cell.value: cell.column for cell in ws[1]}
             img_col_idx = headers.get("Imagen")
             if img_col_idx:
-                _img_dir = Path(image_dir) if image_dir else Path(output_path).parent / "_ferni_imgs"
-                _img_dir.mkdir(parents=True, exist_ok=True)
                 ws.column_dimensions[get_column_letter(img_col_idx)].width = 26
-                cache: dict[str, str] = {}
-                for i, img_url in enumerate(img_urls):
-                    if not img_url:
-                        continue
-                    if img_url not in cache:
-                        safe = re.sub(r"[^A-Za-z0-9]", "_", img_url)[-60:]
-                        ipath = _img_dir / f"{safe}.jpg"
-                        if not ipath.exists():
-                            _download_image(img_url, ipath)
-                        cache[img_url] = str(ipath) if ipath.exists() and ipath.stat().st_size > 0 else ""
-                    path = cache[img_url]
-                    if not path:
+                for i, path in enumerate(screenshot_paths):
+                    if not path or not Path(path).exists():
                         continue
                     ri = i + 2
                     ws.row_dimensions[ri].height = 160
@@ -776,6 +815,46 @@ def write_output(df, desc_col, sku_col, easy_col, matches, output_path, *,
         for sheet_name in ("Datos", "Con fotos"):
             if sheet_name in wb.sheetnames:
                 _truncate_url(wb[sheet_name])
+
+        # ── Estilo "Limpio": cabecera con color, freeze, auto-filtro, anchos ──
+        from openpyxl.styles import PatternFill, Font, Alignment
+
+        # Ancho por columna (en unidades Excel). URL/Imagen ya se setean arriba.
+        _WIDTHS = {
+            "Tienda": 8, "Nombre Tienda": 16, "SKU Easy": 12, "Desc. Producto": 34,
+            "SKU Sodimac": 13, "Marca": 14, "Descripción Producto": 38, "Medida": 12,
+            "Vendedor": 14, "Precio Normal": 13, "Precio Internet": 14,
+            "% Descuento": 12, "Todas las Medidas": 46, "URL": 40, "Imagen": 26,
+        }
+        _hdr_fill = PatternFill("solid", fgColor="2E86C1")   # celeste neutro
+        _hdr_font = Font(color="FFFFFF", bold=True, size=11)
+        _hdr_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        def _style_sheet(ws):
+            headers = {cell.value: cell.column for cell in ws[1]}
+            last_col = ws.max_column
+            last_row = ws.max_row
+            # Cabecera con color + texto blanco negrita + centrado.
+            for c in range(1, last_col + 1):
+                cell = ws.cell(row=1, column=c)
+                cell.fill = _hdr_fill
+                cell.font = _hdr_font
+                cell.alignment = _hdr_align
+            ws.row_dimensions[1].height = 30
+            # Anchos optimizados.
+            for name, idx in headers.items():
+                if name in _WIDTHS:
+                    ws.column_dimensions[get_column_letter(idx)].width = _WIDTHS[name]
+            # Freeze: fila cabecera + columnas de identidad hasta 'SKU Sodimac'.
+            sku_col = headers.get("SKU Sodimac")
+            freeze_col = (sku_col + 1) if sku_col else 1
+            ws.freeze_panes = f"{get_column_letter(freeze_col)}2"
+            # Auto-filtro sobre toda la tabla.
+            ws.auto_filter.ref = f"A1:{get_column_letter(last_col)}{last_row}"
+
+        for sheet_name in ("Datos", "Con fotos"):
+            if sheet_name in wb.sheetnames:
+                _style_sheet(wb[sheet_name])
 
         wb.save(output_path)
     except Exception:

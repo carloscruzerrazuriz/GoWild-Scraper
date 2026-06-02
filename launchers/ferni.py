@@ -386,16 +386,16 @@ def run():
         skus = state["skus_list"]
         stores = list(state["selected_stores"])
 
+        shots_dir = OUTPUT_DIR / "ferni_card_shots"
         matches = await search_doors(
-            skus, stores, headless=True,
+            skus, stores, headless=True, screenshot_dir=str(shots_dir),
             progress_cb=_progress, on_match=_on_match)
         state["matches"] = matches
 
         out = OUTPUT_DIR / f"Puertas_Sodimac_Ferni_{ts}.xlsx"
         write_output(
             state["input_df"], state["desc_col"], state["sku_col"], state["easy_col"],
-            matches, str(out), stores=stores,
-            image_dir=str(OUTPUT_DIR / "_ferni_imgs"))
+            matches, str(out), stores=stores)
         state["output_path"] = out
         return out, matches
 
