@@ -80,6 +80,20 @@ def run():
         "output_path": None, "running": False,
     }
 
+    # Definido temprano: lo usan tanto _update_stores (Paso 2) como el Paso 3.
+    run_summary = widgets.HTML()
+
+    def _update_run_summary(*_):
+        n_st = len(state.get("selected_stores", []))
+        n_sk = len(state.get("skus_list") or [])
+        if n_st == 0 or n_sk == 0:
+            run_summary.value = ""; return
+        run_summary.value = (
+            f"<div style='background:#f0f7ff;border:1px solid #bcdcff;padding:.6rem;"
+            f"border-radius:6px;margin:.4rem 0;font-size:.95em;'>"
+            f"📋 Vas a buscar <b>{n_sk}</b> puerta(s) en <b>{n_st}</b> tienda(s) "
+            f"= <b>{n_st * n_sk}</b> filas.</div>")
+
     # ─── Header + animaciones ──────────────────────────────────────────
     display(HTML("""
     <div style='background:linear-gradient(120deg,#5d4037,#8d6e63);color:white;
@@ -299,24 +313,12 @@ def run():
     live_status = widgets.HTML()
     live_metrics = widgets.HTML()
     result_out = widgets.Output()
-    run_summary = widgets.HTML()
 
     def _set_pct(w, v, t):
         if not t:
             w.value = ""; return
         p = int(round(100 * v / t))
         w.value = f"<span style='color:#555;font-size:.9em;margin-left:8px;'>{v}/{t} · {p}%</span>"
-
-    def _update_run_summary(*_):
-        n_st = len(state.get("selected_stores", []))
-        n_sk = len(state.get("skus_list") or [])
-        if n_st == 0 or n_sk == 0:
-            run_summary.value = ""; return
-        run_summary.value = (
-            f"<div style='background:#f0f7ff;border:1px solid #bcdcff;padding:.6rem;"
-            f"border-radius:6px;margin:.4rem 0;font-size:.95em;'>"
-            f"📋 Vas a buscar <b>{n_sk}</b> puerta(s) en <b>{n_st}</b> tienda(s) "
-            f"= <b>{n_st * n_sk}</b> filas.</div>")
 
     _T0 = [None]
     _zone_idx = [0]
