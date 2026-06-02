@@ -335,6 +335,7 @@ async def scrape_maestra(
     screenshot_dir=None,
     progress_cb=None,
     on_row=None,
+    done_keys=None,
 ):
     """Recorre cada subcategoría en cada zona. `subcats` es lista de
     (section_name, subcat_name, subcat_url). Devuelve list[dict] de filas
@@ -352,8 +353,20 @@ async def scrape_maestra(
     """
     rows_all: list[dict] = []
     n_subcats = len(subcats)
+    done = set(done_keys or ())  # set de (store_id, subcat_url) ya completados
 
     async def _run_zone(browser, store) -> bool:
+        # Si TODA la tienda ya está hecha (resume), saltarla sin abrir contexto.
+        if done and all((store["id"], u) in done for (_s, _n, u) in subcats):
+            for idx, (section_name, subcat_name, subcat_url) in enumerate(subcats, 1):
+                if progress_cb:
+                    progress_cb({"event": "subcat_done", "store": store, "subcat": subcat_name,
+                                 "subcat_url": subcat_url, "idx": idx, "total": n_subcats,
+                                 "n_rows": 0, "skipped": True})
+            if progress_cb:
+                progress_cb({"event": "zone_end", "store": store, "n_rows": 0,
+                             "zone_failed": False, "skipped": True})
+            return True
         ctx = await browser.new_context(
             viewport={"width": 1280, "height": 900}, color_scheme="light",
             user_agent=USER_AGENT)
@@ -376,10 +389,17 @@ async def scrape_maestra(
             zone_shots = (Path(screenshot_dir) / store["id"]) if screenshot_dir else None
             zone_rows = 0
             for idx, (section_name, subcat_name, subcat_url) in enumerate(subcats, 1):
+                # Resume: si esta (tienda, subcategoría) ya está hecha, saltarla.
+                if (store["id"], subcat_url) in done:
+                    if progress_cb:
+                        progress_cb({"event": "subcat_done", "store": store, "subcat": subcat_name,
+                                     "subcat_url": subcat_url, "idx": idx, "total": n_subcats,
+                                     "n_rows": 0, "skipped": True})
+                    continue
                 if progress_cb:
                     progress_cb({"event": "subcat_start", "store": store,
                                  "section": section_name, "subcat": subcat_name,
-                                 "idx": idx, "total": n_subcats})
+                                 "subcat_url": subcat_url, "idx": idx, "total": n_subcats})
 
                 def _ppcb(pg, tot, _sn=subcat_name):
                     if progress_cb:
@@ -409,9 +429,11 @@ async def scrape_maestra(
 
                 if progress_cb:
                     progress_cb({"event": "subcat_done", "store": store,
-                                 "subcat": subcat_name, "n_rows": len(res.get("rows", [])),
+                                 "subcat": subcat_name, "subcat_url": subcat_url,
+                                 "idx": idx, "total": n_subcats,
+                                 "n_rows": len(res.get("rows", [])),
                                  "empty": res.get("empty"), "failed": res.get("failed"),
-                                 "truncated": res.get("truncated")})
+                                 "truncated": res.get("truncated"), "skipped": False})
 
             if progress_cb:
                 progress_cb({"event": "zone_end", "store": store,
@@ -460,13 +482,6 @@ OUTPUT_COLS = [
     "Descripción Producto", "Medida", "Vendedor", "Precio Normal",
     "Precio Internet", "% Descuento", "Todas las Medidas", "URL",
 ]
-
-_WIDTHS = {
-    "Tienda": 8, "Nombre Tienda": 16, "Sección": 20, "Subcategoría": 24,
-    "Marca": 14, "SKU": 13, "Descripción Producto": 38, "Medida": 12,
-    "Vendedor": 14, "Precio Normal": 13, "Precio Internet": 14,
-    "% Descuento": 12, "Todas las Medidas": 46, "URL": 40, "Imagen": 26,
-}
 
 
 def write_excel(rows, output_file):
@@ -536,35 +551,12 @@ def write_excel(rows, output_file):
                     except Exception:
                         pass
 
-        # Estilo limpio (cabecera celeste + freeze + auto-filtro + anchos + URL).
-        _fill = PatternFill("solid", fgColor="2E86C1")
-        _font = Font(color="FFFFFF", bold=True, size=11)
-        _align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        _url_align = Alignment(horizontal="left", vertical="center", wrap_text=False, shrink_to_fit=False)
-
-        def _style(ws):
-            headers = {cell.value: cell.column for cell in ws[1]}
-            last_col, last_row = ws.max_column, ws.max_row
-            for c in range(1, last_col + 1):
-                cell = ws.cell(row=1, column=c)
-                cell.fill = _fill; cell.font = _font; cell.alignment = _align
-            ws.row_dimensions[1].height = 30
-            for name, idx in headers.items():
-                if name in _WIDTHS:
-                    ws.column_dimensions[get_column_letter(idx)].width = _WIDTHS[name]
-            url_col = headers.get("URL")
-            if url_col:
-                for row in ws.iter_rows(min_row=2, min_col=url_col, max_col=url_col):
-                    for cell in row:
-                        cell.alignment = _url_align
-            sku_col = headers.get("SKU")
-            freeze_col = (sku_col + 1) if sku_col else 1
-            ws.freeze_panes = f"{get_column_letter(freeze_col)}2"
-            ws.auto_filter.ref = f"A1:{get_column_letter(last_col)}{last_row}"
-
+        # Estética unificada (cabecera celeste, auto-filtro, anchos auto, URL
+        # truncada con spacer, SIN freeze) — helper compartido en _excel_utils.
+        from ._excel_utils import apply_clean_style
         for sn in ("Datos", "Con fotos"):
             if sn in wb.sheetnames:
-                _style(wb[sn])
+                apply_clean_style(wb[sn])
 
         wb.save(output_file)
     except Exception:

@@ -879,6 +879,9 @@ def write_output(df, desc_col, sku_col, easy_col, matches, output_path, stores=N
             if url_col_d:
                 apply_url_truncation(ws_d, url_col_d, url_col_d + 1, url_width=40, total_rows=len(rows) + 1)
 
+        from ._excel_utils import apply_clean_style
+        for _sn in wb.sheetnames:
+            apply_clean_style(wb[_sn])
         wb.save(output_path)
     except Exception:
         pass

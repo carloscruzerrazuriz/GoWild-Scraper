@@ -800,61 +800,12 @@ def write_output(df, desc_col, sku_col, easy_col, matches, output_path, *,
                     except Exception:
                         pass
 
-        # URL truncation (ancho fijo 40, sin wrap) en ambas hojas.
-        def _truncate_url(ws):
-            headers = {cell.value: cell.column for cell in ws[1]}
-            url_col = headers.get("URL")
-            if not url_col:
-                return
-            ws.column_dimensions[get_column_letter(url_col)].width = 40
-            from openpyxl.styles import Alignment
-            for row in ws.iter_rows(min_row=2, min_col=url_col, max_col=url_col):
-                for cell in row:
-                    cell.alignment = Alignment(wrap_text=False, shrink_to_fit=False)
-
+        # Estética unificada (cabecera celeste, auto-filtro, anchos auto, URL
+        # truncada con spacer, SIN freeze) — helper compartido en _excel_utils.
+        from ._excel_utils import apply_clean_style
         for sheet_name in ("Datos", "Con fotos"):
             if sheet_name in wb.sheetnames:
-                _truncate_url(wb[sheet_name])
-
-        # ── Estilo "Limpio": cabecera con color, freeze, auto-filtro, anchos ──
-        from openpyxl.styles import PatternFill, Font, Alignment
-
-        # Ancho por columna (en unidades Excel). URL/Imagen ya se setean arriba.
-        _WIDTHS = {
-            "Tienda": 8, "Nombre Tienda": 16, "SKU Easy": 12, "Desc. Producto": 34,
-            "SKU Sodimac": 13, "Marca": 14, "Descripción Producto": 38, "Medida": 12,
-            "Vendedor": 14, "Precio Normal": 13, "Precio Internet": 14,
-            "% Descuento": 12, "Todas las Medidas": 46, "URL": 40, "Imagen": 26,
-        }
-        _hdr_fill = PatternFill("solid", fgColor="2E86C1")   # celeste neutro
-        _hdr_font = Font(color="FFFFFF", bold=True, size=11)
-        _hdr_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-        def _style_sheet(ws):
-            headers = {cell.value: cell.column for cell in ws[1]}
-            last_col = ws.max_column
-            last_row = ws.max_row
-            # Cabecera con color + texto blanco negrita + centrado.
-            for c in range(1, last_col + 1):
-                cell = ws.cell(row=1, column=c)
-                cell.fill = _hdr_fill
-                cell.font = _hdr_font
-                cell.alignment = _hdr_align
-            ws.row_dimensions[1].height = 30
-            # Anchos optimizados.
-            for name, idx in headers.items():
-                if name in _WIDTHS:
-                    ws.column_dimensions[get_column_letter(idx)].width = _WIDTHS[name]
-            # Freeze: fila cabecera + columnas de identidad hasta 'SKU Sodimac'.
-            sku_col = headers.get("SKU Sodimac")
-            freeze_col = (sku_col + 1) if sku_col else 1
-            ws.freeze_panes = f"{get_column_letter(freeze_col)}2"
-            # Auto-filtro sobre toda la tabla.
-            ws.auto_filter.ref = f"A1:{get_column_letter(last_col)}{last_row}"
-
-        for sheet_name in ("Datos", "Con fotos"):
-            if sheet_name in wb.sheetnames:
-                _style_sheet(wb[sheet_name])
+                apply_clean_style(wb[sheet_name])
 
         wb.save(output_path)
     except Exception:

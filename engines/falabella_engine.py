@@ -783,6 +783,9 @@ def write_excel(rows, output_file):
                 except Exception:
                     pass
         ws.delete_cols(ipi)
+        from ._excel_utils import apply_clean_style
+        for _sn in wb.sheetnames:
+            apply_clean_style(wb[_sn])
         wb.save(output_file)
     except Exception as e:
         console.print(f"[yellow]Aviso embebiendo imágenes: {e}[/]")
@@ -1333,6 +1336,9 @@ def write_output(rows, output_path):
                     c.number_format = "@"
                     if c.value is not None:
                         c.value = str(c.value)
+    from ._excel_utils import apply_clean_style
+    for _sn in wb.sheetnames:
+        apply_clean_style(wb[_sn])
     wb.save(output_path)
     return output_path
 

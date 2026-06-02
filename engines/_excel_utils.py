@@ -18,8 +18,86 @@ from __future__ import annotations
 import time as _time
 
 import openpyxl
-from openpyxl.styles import Alignment
+from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+
+
+# Estética compartida de TODOS los Excel de salida (look unificado tipo Ferni):
+# cabecera celeste con texto blanco negrita, auto-filtro y anchos auto-ajustados.
+# NO inmoviliza paneles (freeze) — decisión de diseño del 2026-06-02.
+HEADER_FILL = "2E86C1"  # celeste neutro
+
+
+def apply_clean_style(ws, *, header_fill: str = HEADER_FILL,
+                      skip_width=("URL", "Imagen"), min_w: int = 8,
+                      max_w: int = 48, sample_rows: int = 300) -> None:
+    """Aplica el estilo limpio unificado a una hoja ya escrita.
+
+    - Cabecera: fondo `header_fill`, texto blanco negrita, centrado, alto 30.
+    - Auto-filtro sobre toda la tabla.
+    - Anchos auto-ajustados al contenido (cap [min_w, max_w]); salta las columnas
+      en `skip_width` (URL / Imagen tienen su propio ancho fijo en cada engine).
+    - SIN freeze_panes (los paneles inmovilizados se excluyeron a propósito).
+
+    Defensivo: nunca lanza — si algo falla, deja la hoja como estaba (no debe
+    romper el guardado del workbook, que suele traer imágenes embebidas)."""
+    try:
+        last_col, last_row = ws.max_column, ws.max_row
+        if last_col < 1 or last_row < 1:
+            return
+        fill = PatternFill("solid", fgColor=header_fill)
+        font = Font(color="FFFFFF", bold=True, size=11)
+        align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        names = {}
+        for c in range(1, last_col + 1):
+            cell = ws.cell(row=1, column=c)
+            try:
+                cell.fill = fill
+                cell.font = font
+                cell.alignment = align
+            except Exception:
+                pass
+            names[c] = str(cell.value or "")
+        try:
+            ws.row_dimensions[1].height = 30
+            ws.auto_filter.ref = f"A1:{get_column_letter(last_col)}{last_row}"
+        except Exception:
+            pass
+        skip = set(skip_width)
+        scan_to = min(last_row, 1 + max(0, sample_rows))
+        for c in range(1, last_col + 1):
+            if names[c] in skip:
+                continue
+            maxlen = len(names[c])
+            for r in range(2, scan_to + 1):
+                v = ws.cell(row=r, column=c).value
+                if v is not None:
+                    ln = len(str(v))
+                    if ln > maxlen:
+                        maxlen = ln
+            try:
+                ws.column_dimensions[get_column_letter(c)].width = max(min_w, min(max_w, maxlen + 2))
+            except Exception:
+                pass
+        # URL: ancho fijo 40 + texto clipeado (sin wrap) + " " en la celda
+        # contigua vacía para que el texto largo NO se derrame a la derecha.
+        try:
+            url_c = next((c for c, n in names.items() if n == "URL"), None)
+            if url_c:
+                ws.column_dimensions[get_column_letter(url_c)].width = 40
+                clip = Alignment(horizontal="left", vertical="center",
+                                 wrap_text=False, shrink_to_fit=False)
+                has_next = url_c < last_col
+                for r in range(2, last_row + 1):
+                    ws.cell(row=r, column=url_c).alignment = clip
+                    if has_next:
+                        nxt = ws.cell(row=r, column=url_c + 1)
+                        if nxt.value in (None, ""):
+                            nxt.value = " "
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 
 # path -> timestamp de la última descarga disparada

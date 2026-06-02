@@ -5,6 +5,10 @@ con la lógica de variantes (medidas exactas para puertas "y más").
 
 Se lanza desde el hub launchers/ferni.py (selector "Maestra Sección").
 Motor: engines/ferni_maestra_sodimac.py (reusa el crawl del Maestra de producción).
+
+Incluye checkpoints en Google Drive (reanudación tras corte) — igual que el
+Maestra de producción: cada (tienda, subcategoría) completada se marca y un run
+interrumpido se puede retomar sin re-scrapear lo ya hecho.
 """
 from engines import ferni_maestra_sodimac as _eng
 
@@ -15,7 +19,7 @@ write_excel       = _eng.write_excel
 
 
 def run():
-    import asyncio, uuid as _uuid, time as _time
+    import asyncio, uuid as _uuid, time as _time, json as _json, os as _os
     from datetime import datetime
     from pathlib import Path
     import nest_asyncio
@@ -37,7 +41,8 @@ def run():
     OUTPUT_DIR = Path.cwd()
     ALL_ST = ALL_STORES
     state = {"sections": None, "selected_subcats": [], "selected_stores": [],
-             "rows": [], "output_path": None, "running": False}
+             "rows": [], "output_path": None, "running": False,
+             "pending_resume": None, "_run_id": None}
 
     # ─── Telemetría ────────────────────────────────────────────────────
     _ACTIVITY_URL = "https://script.google.com/macros/s/AKfycbzALm18Xuw9c7U0tcAE0u1lPvq1j4P5kCxIJvdkDuG5MLVrqKyWd5qt-Kjb-TSP3B82/exec"
@@ -45,20 +50,105 @@ def run():
     _SESSION_ID = globals().get("_SESSION_ID") or _uuid.uuid4().hex[:8]
     globals()["_SESSION_ID"] = _SESSION_ID
 
-    def _log_activity(mode="", n_skus=0, n_stores=0, n_rows_output=0, runtime_s=0, output_file=""):
+    def _log_activity(mode="", n_stores=0, n_rows_output=0, runtime_s=0, output_file=""):
         try:
-            import requests as _rq, os as _os
+            import requests as _rq
             _rq.post(_ACTIVITY_URL, json={
                 "token": _ACTIVITY_TOKEN, "session_id": _SESSION_ID, "colab": "ferni_maestra",
-                "retailer": "sodimac", "mode": str(mode or "")[:30],
-                "n_skus": int(n_skus or 0), "n_stores": int(n_stores or 0),
-                "n_rows_output": int(n_rows_output or 0), "n_with_price": 0,
-                "runtime_s": int(runtime_s or 0), "output_file": str(output_file or "")[:120],
+                "retailer": "sodimac", "mode": str(mode or "")[:30], "n_skus": 0,
+                "n_stores": int(n_stores or 0), "n_rows_output": int(n_rows_output or 0),
+                "n_with_price": 0, "runtime_s": int(runtime_s or 0),
+                "output_file": str(output_file or "")[:120],
                 "user_hint": (_os.environ.get("COLAB_USER") or _os.environ.get("USER") or "")[:80],
                 "colab_url": "",
             }, timeout=5, allow_redirects=True)
         except Exception:
             pass
+
+    # ─── Checkpoints en Google Drive + autolimpieza 12 h ───────────────
+    PARTIAL_TTL = 12 * 3600
+    PARTIAL_DIR = OUTPUT_DIR / "_ferni_maestra_partials"
+    if IN_COLAB:
+        try:
+            from google.colab import drive as _drive
+            if not _os.path.isdir("/content/drive/MyDrive"):
+                _drive.mount("/content/drive", force_remount=False)
+            PARTIAL_DIR = Path("/content/drive/MyDrive/ferni_maestra_partials")
+        except Exception as _e:
+            print(f"⚠️ No se pudo montar Drive ({_e}); checkpoints en filesystem efímero.")
+    PARTIAL_DIR.mkdir(parents=True, exist_ok=True)
+
+    _now = _time.time()
+    for _glob in ("*.jsonl", "*.meta.json", "*.done.tsv"):
+        for _p in PARTIAL_DIR.glob(_glob):
+            try:
+                if _now - _p.stat().st_mtime > PARTIAL_TTL:
+                    _p.unlink()
+            except Exception:
+                pass
+
+    def _meta_path(rid): return PARTIAL_DIR / f"{rid}.meta.json"
+    def _jsonl_path(rid): return PARTIAL_DIR / f"{rid}.jsonl"
+    def _done_path(rid): return PARTIAL_DIR / f"{rid}.done.tsv"
+
+    def _write_meta(rid, payload):
+        try:
+            _meta_path(rid).write_text(_json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _append_row(rid, row):
+        try:
+            with open(_jsonl_path(rid), "a", encoding="utf-8") as f:
+                f.write(_json.dumps(row, ensure_ascii=False, default=str) + "\n")
+        except Exception:
+            pass
+
+    def _load_rows(rid):
+        rows, p = [], _jsonl_path(rid)
+        if p.exists():
+            for line in p.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line:
+                    try: rows.append(_json.loads(line))
+                    except Exception: pass
+        return rows
+
+    def _append_done(rid, store_id, subcat_url):
+        try:
+            with open(_done_path(rid), "a", encoding="utf-8") as f:
+                f.write(f"{store_id}\t{subcat_url}\n")
+        except Exception:
+            pass
+
+    def _read_done(rid):
+        done, p = set(), _done_path(rid)
+        if p.exists():
+            for line in p.read_text(encoding="utf-8").splitlines():
+                parts = line.split("\t")
+                if len(parts) == 2:
+                    done.add((parts[0], parts[1]))
+        return done
+
+    def _cleanup_run(rid):
+        for p in (_jsonl_path(rid), _meta_path(rid), _done_path(rid)):
+            try: p.unlink()
+            except Exception: pass
+
+    def _find_resumable():
+        out = []
+        for m in sorted(PARTIAL_DIR.glob("*.meta.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+            rid = m.name[:-len(".meta.json")]
+            if not _jsonl_path(rid).exists():
+                continue
+            try:
+                meta = _json.loads(m.read_text(encoding="utf-8"))
+                if meta.get("finished"):
+                    continue
+                out.append((rid, meta, _load_rows(rid), _read_done(rid)))
+            except Exception:
+                continue
+        return out
 
     # ─── Header ────────────────────────────────────────────────────────
     display(HTML("""
@@ -68,18 +158,50 @@ def run():
       <p style='margin:.3rem 0 0;color:rgba(255,255,255,.92);font-size:.95rem;'>
         Elegí secciones/subcategorías y las recorremos completas. Las puertas (y
         cualquier producto con medidas) salen con <b>una fila por medida</b> y su
-        <b>precio exacto</b>.
+        <b>precio exacto</b>. Checkpoints en Drive: si se corta, podés reanudar.
       </p>
     </div>
     <style>
     @keyframes fm-spin { to { transform: rotate(360deg); } }
+    @keyframes fm-pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
     .fm-spinner{display:inline-block;width:14px;height:14px;border:2px solid #2E86C1;
       border-top-color:transparent;border-radius:50%;animation:fm-spin .8s linear infinite;
       vertical-align:-3px;margin-right:8px;}
     .fm-banner{background:linear-gradient(90deg,#ffb84d,#f0a020);color:#3a2400;
-      padding:.7rem 1rem;border-radius:8px;font-family:sans-serif;font-weight:600;margin:.5rem 0;}
+      padding:.7rem 1rem;border-radius:8px;font-family:sans-serif;font-weight:600;
+      animation:fm-pulse 1.6s ease-in-out infinite;margin:.5rem 0;}
     </style>
     """))
+
+    # ─── Helper: panel de checkboxes limpio (estilo Maestra) ───────────
+    def _checkbox_panel(items, all_checked=False, height="240px", width="640px"):
+        boxes = []
+        for label, val in items:
+            cb = widgets.Checkbox(value=all_checked, description=label, indent=False,
+                                  layout=widgets.Layout(width="auto", margin="0"))
+            cb._payload = val
+            boxes.append(cb)
+        list_box = widgets.VBox(boxes, layout=widgets.Layout(
+            max_height=height, overflow_y="auto", border="1px solid #d0d0d0",
+            border_radius="6px", padding="6px 10px", width=width))
+        btn_all = widgets.Button(description="Marcar todas", layout=widgets.Layout(width="130px"))
+        btn_none = widgets.Button(description="Desmarcar todas", layout=widgets.Layout(width="150px"))
+        btn_inv = widgets.Button(description="Invertir", layout=widgets.Layout(width="100px"))
+        counter = widgets.HTML()
+        def refresh(*_):
+            n = sum(1 for b in boxes if b.value)
+            counter.value = f"<span style='color:#555;font-size:.9em;'>{n} de {len(boxes)} seleccionadas</span>"
+        for b in boxes:
+            b.observe(refresh, "value")
+        btn_all.on_click(lambda _: [setattr(b, "value", True) for b in boxes])
+        btn_none.on_click(lambda _: [setattr(b, "value", False) for b in boxes])
+        btn_inv.on_click(lambda _: [setattr(b, "value", not b.value) for b in boxes])
+        refresh()
+        cont = widgets.VBox([
+            widgets.HBox([btn_all, btn_none, btn_inv, counter],
+                         layout=widgets.Layout(align_items="center", gap="8px")),
+            list_box])
+        return cont, (lambda: [b._payload for b in boxes if b.value]), boxes
 
     # ─── Paso 1: descubrir + elegir secciones ──────────────────────────
     discover_status = widgets.HTML("<span class='fm-spinner'></span>Descubriendo el árbol de categorías de Sodimac…")
@@ -87,14 +209,11 @@ def run():
     sel_counter = widgets.HTML()
     step1 = widgets.VBox([
         widgets.HTML("<h4 style='margin:.3rem 0;'>📂 Paso 1 — Secciones a recorrer</h4>"),
-        discover_status, sections_box, sel_counter,
-    ])
+        discover_status, sections_box, sel_counter])
 
-    # contenedores de pasos 2 y 3 (ocultos hasta que se descubran secciones)
     stores_container = widgets.VBox(layout=widgets.Layout(display="none"))
     run_container = widgets.VBox(layout=widgets.Layout(display="none"))
-
-    _subcat_boxes = []  # cada cb tiene cb._payload = (section, subcat, url)
+    _subcat_boxes = []
 
     def _refresh_selection(*_):
         sel = [cb._payload for cb in _subcat_boxes if cb.value]
@@ -106,8 +225,7 @@ def run():
 
     def _build_sections_ui(sections):
         _subcat_boxes.clear()
-        panes = []
-        titles = []
+        panes, titles = [], []
         for section_name, subs in sections:
             sec_boxes = []
             for subcat_name, url in subs:
@@ -115,18 +233,14 @@ def run():
                                       layout=widgets.Layout(width="auto", margin="0"))
                 cb._payload = (section_name, subcat_name, url)
                 cb.observe(_refresh_selection, "value")
-                _subcat_boxes.append(cb)
-                sec_boxes.append(cb)
-            # "todas" de la sección
+                _subcat_boxes.append(cb); sec_boxes.append(cb)
             all_cb = widgets.Checkbox(value=False, description=f"— Todas ({len(sec_boxes)}) —",
                                       indent=False, layout=widgets.Layout(width="auto"))
             def _toggle_all(change, boxes=sec_boxes):
-                for b in boxes:
-                    b.value = change["new"]
+                for b in boxes: b.value = change["new"]
             all_cb.observe(_toggle_all, "value")
-            pane = widgets.VBox([all_cb] + sec_boxes,
-                                layout=widgets.Layout(max_height="240px", overflow_y="auto"))
-            panes.append(pane)
+            panes.append(widgets.VBox([all_cb] + sec_boxes,
+                                      layout=widgets.Layout(max_height="240px", overflow_y="auto")))
             titles.append(f"{section_name} ({len(sec_boxes)})")
         acc = widgets.Accordion(children=panes)
         for i, t in enumerate(titles):
@@ -143,70 +257,77 @@ def run():
                                                   "Chrome/120.0.0.0 Safari/537.36"))
             page = await ctx.new_page()
             try:
-                secs = await discover_sections(page)
+                return await discover_sections(page)
             finally:
                 await b.close()
-            return secs
 
-    # ─── Paso 2: Zonas (presets) ───────────────────────────────────────
-    def _build_stores():
-        def _checkbox_panel(items, height="220px"):
-            boxes = []
-            for label, val in items:
-                cb = widgets.Checkbox(value=False, description=label, indent=False,
-                                      layout=widgets.Layout(width="auto", margin="0"))
-                cb._payload = val
-                boxes.append(cb)
-            list_box = widgets.VBox(boxes, layout=widgets.Layout(
-                max_height=height, overflow_y="auto", border="1px solid #d0d0d0",
-                padding="6px 10px", width="640px"))
-            return list_box, (lambda: [b._payload for b in boxes if b.value]), boxes
+    # ─── Paso 2: Zonas (selector limpio estilo Maestra) ────────────────
+    rm = [s for s in ALL_ST if s["region"] == "Metropolitana"]
+    PRESETS = {
+        "Solo Cerrillos (más rápido)": [s for s in ALL_ST if s["id"] == "E522"],
+        f"Todas RM ({len(rm)} tiendas)": rm,
+        f"Todas Chile ({len(ALL_ST)} tiendas)": ALL_ST,
+        "Personalizado": None,
+    }
+    preset_radio = widgets.RadioButtons(options=list(PRESETS.keys()), value="Solo Cerrillos (más rápido)",
+                                        description="Preset:", style={"description_width": "initial"},
+                                        layout=widgets.Layout(width="auto"))
+    store_items = [(f"{s['id']}  {s['name']}  ({s['comuna']})", s) for s in ALL_ST]
+    store_panel, get_custom_stores, store_boxes = _checkbox_panel(store_items, all_checked=False, height="240px")
+    store_panel_wrap = widgets.VBox([store_panel], layout=widgets.Layout(display="none"))
+    store_eta = widgets.HTML()
+    capture_screenshots = widgets.Checkbox(
+        value=True, description="Capturar screenshots de cards (Excel más pesado)",
+        indent=False, layout=widgets.Layout(width="auto"))
 
-        rm = [s for s in ALL_ST if s["region"] == "Metropolitana"]
-        presets = {
-            "Solo Cerrillos (default — más rápido)": [s for s in ALL_ST if s["id"] == "E522"],
-            f"Todas RM ({len(rm)} tiendas)": rm,
-            f"Todas Chile ({len(ALL_ST)} tiendas)": ALL_ST,
-            "Personalizado": None,
-        }
-        labeler = lambda s: f"{s['id']}  {s['name']:<14}  ({s.get('comuna','')}, {s['region']})"
-        preset_radio = widgets.RadioButtons(options=list(presets.keys()), value=list(presets.keys())[0],
-                                            description="Preset:", style={"description_width": "initial"})
-        panel, getcustom, boxes = _checkbox_panel([(labeler(s), s) for s in ALL_ST])
-        wrap = widgets.VBox([panel], layout=widgets.Layout(display="none"))
-        eta = widgets.HTML()
+    def _update_stores(*_):
+        preset = PRESETS[preset_radio.value]
+        if preset is None:
+            store_panel_wrap.layout.display = ""
+            sel = get_custom_stores()
+            state["selected_stores"] = sel if sel else [s for s in ALL_ST if s["id"] == "E522"]
+        else:
+            store_panel_wrap.layout.display = "none"
+            state["selected_stores"] = preset
+        n = len(state["selected_stores"])
+        store_eta.value = (f"<span style='color:#27ae60'>✓ {n} tienda(s)</span>" if n
+                           else "<span style='color:#c0392b'>⚠️ Seleccioná al menos 1 tienda</span>")
+        _update_run_summary()
 
-        def _upd(*_):
-            preset = presets[preset_radio.value]
-            if preset is None:
-                wrap.layout.display = ""
-                sel = getcustom()
-                state["selected_stores"] = sel if sel else [s for s in ALL_ST if s["id"] == "E522"]
-            else:
-                wrap.layout.display = "none"
-                state["selected_stores"] = preset
-            n = len(state["selected_stores"])
-            eta.value = (f"<span style='color:#27ae60'>✓ {n} tienda(s)</span>" if n
-                         else "<span style='color:#c0392b'>⚠️ Seleccioná al menos 1</span>")
-            _update_run_summary()
+    preset_radio.observe(_update_stores, "value")
+    for b in store_boxes:
+        b.observe(_update_stores, "value")
+    stores_container.children = [
+        widgets.HTML("<h4 style='margin:.6rem 0 .3rem;'>📍 Paso 2 — Tiendas</h4>"),
+        preset_radio, store_panel_wrap, store_eta,
+        widgets.HTML("<h4 style='margin:.8rem 0 .3rem;'>⚙️ Opciones</h4>"),
+        capture_screenshots,
+    ]
 
-        preset_radio.observe(_upd, "value")
-        for b in boxes:
-            b.observe(_upd, "value")
-        _upd()
-        stores_container.children = [
-            widgets.HTML("<h4 style='margin:.6rem 0 .3rem;'>📍 Paso 2 — Tiendas</h4>"),
-            preset_radio, wrap, eta,
-        ]
-
-    # ─── Paso 3: Run ───────────────────────────────────────────────────
+    # ─── Paso 3: Run (barras tienda/subcat/página) ─────────────────────
     run_btn = widgets.Button(description="🚀 Iniciar recorrido", button_style="success",
                              disabled=True, layout=widgets.Layout(width="230px"))
     running_banner = widgets.HTML()
+    resume_panel = widgets.VBox()
+    store_bar = widgets.IntProgress(min=0, max=100, value=0, description="Tiendas:",
+                                    bar_style="info", layout=widgets.Layout(width="540px"),
+                                    style={"description_width": "initial"})
+    store_pct = widgets.HTML(layout=widgets.Layout(width="120px"))
+    subcat_bar = widgets.IntProgress(min=0, max=100, value=0, description="Subcat:",
+                                     bar_style="info", layout=widgets.Layout(width="540px"),
+                                     style={"description_width": "initial"})
+    subcat_pct = widgets.HTML(layout=widgets.Layout(width="120px"))
+    page_bar = widgets.IntProgress(min=0, max=100, value=0, description="Páginas:",
+                                   bar_style="info", layout=widgets.Layout(width="540px"),
+                                   style={"description_width": "initial"})
+    page_pct = widgets.HTML(layout=widgets.Layout(width="120px"))
     live_status = widgets.HTML()
     live_metrics = widgets.HTML()
     result_out = widgets.Output()
     run_summary = widgets.HTML()
+
+    def _set_pct(w, v, t):
+        w.value = "" if not t else f"<span style='color:#555;font-size:.9em;margin-left:8px;'>{v}/{t} · {int(round(100*v/t))}%</span>"
 
     def _update_run_summary(*_):
         n_sc = len(state.get("selected_subcats") or [])
@@ -216,14 +337,14 @@ def run():
                 f"<div style='background:#eaf4fb;border:1px solid #aed6f1;padding:.6rem;"
                 f"border-radius:6px;margin:.4rem 0;font-size:.95em;'>"
                 f"📋 Vas a recorrer <b>{n_sc}</b> subcategoría(s) en <b>{n_st}</b> tienda(s). "
-                f"<span style='color:#b9770e;'>Ojo: recorrer secciones completas puede tardar "
-                f"(cada subcategoría pagina todos sus productos).</span></div>")
+                f"<span style='color:#b9770e;'>Recorrer secciones completas puede tardar; "
+                f"si se corta, podés reanudar desde el checkpoint.</span></div>")
             run_btn.disabled = False
         else:
             run_summary.value = ""
             run_btn.disabled = True
 
-    _T0 = [None]; _zones_done = [0]; _subcats_done = [0]
+    _T0 = [None]; _last_store = [None]
 
     def _fmt(s):
         s = int(s); m, s = divmod(s, 60); h, m = divmod(m, 60)
@@ -231,9 +352,15 @@ def run():
 
     def _progress(ev):
         e = ev.get("event"); st = ev.get("store") or {}; sn = st.get("name", "?")
-        n_st = len(state["selected_stores"]) or 1
+        n_st = store_bar.max or 1
+        # Reset subcat bar al cambiar de tienda (cubre tiendas skipeadas en resume).
+        sid = st.get("id")
+        if sid and sid != _last_store[0]:
+            _last_store[0] = sid
+            subcat_bar.value = 0; _set_pct(subcat_pct, 0, subcat_bar.max)
+            page_bar.value = 0; page_bar.description = "Páginas:"; _set_pct(page_pct, 0, page_bar.max)
         if e == "browser_launching":
-            _T0[0] = _time.time(); _zones_done[0] = 0; _subcats_done[0] = 0
+            _T0[0] = _time.time()
             live_status.value = "<span class='fm-spinner'></span>🚀 Lanzando Chromium…"
         elif e == "browser_ready":
             live_status.value = "<span class='fm-spinner'></span>✓ Chromium listo…"
@@ -243,19 +370,36 @@ def run():
             live_status.value = f"<span class='fm-spinner'></span>⏳ {sn} · calentando sesión…"
         elif e == "warmup_done":
             live_status.value = f"<span class='fm-spinner'></span>🔧 {sn} · seteando zona…"
+        elif e == "zone_start":
+            subcat_bar.max = ev.get("n_subcats", 1) or 1
+            subcat_bar.value = 0; _set_pct(subcat_pct, 0, subcat_bar.max)
         elif e == "subcat_start":
             live_status.value = (f"<span class='fm-spinner'></span>🗂️ {sn} · "
                                  f"{ev.get('section','')} › {ev.get('subcat','')} "
                                  f"({ev.get('idx')}/{ev.get('total')})")
+            page_bar.max = 1; page_bar.value = 0; page_bar.description = "Páginas:"; _set_pct(page_pct, 0, 1)
         elif e == "subcat_page":
-            tot = ev.get("total_pages")
+            tot = ev.get("total_pages"); cur = ev.get("page", 1)
+            if tot:
+                page_bar.max = tot; page_bar.value = min(cur, tot); page_bar.description = f"Páginas {cur}/{tot}"
+                _set_pct(page_pct, min(cur, tot), tot)
+            else:
+                page_bar.max = max(page_bar.max, cur); page_bar.value = cur; page_bar.description = f"Página {cur}"
+                _set_pct(page_pct, cur, page_bar.max)
             live_status.value = (f"<span class='fm-spinner'></span>🗂️ {sn} · {ev.get('subcat','')} · "
-                                 f"pág {ev.get('page')}{('/'+str(tot)) if tot else ''} · "
-                                 f"{len(state['rows'])} filas")
+                                 f"pág {cur}{('/'+str(tot)) if tot else ''} · {len(state['rows'])} filas")
         elif e == "subcat_done":
-            _subcats_done[0] += 1
+            subcat_bar.max = ev.get("total", subcat_bar.max) or subcat_bar.max
+            subcat_bar.value = min(ev.get("idx", subcat_bar.value + 1), subcat_bar.max)
+            subcat_bar.description = f"Subcat {subcat_bar.value}/{subcat_bar.max}"
+            _set_pct(subcat_pct, subcat_bar.value, subcat_bar.max)
+            # Persistir checkpoint: marcar (tienda, subcat) como hecha.
+            if not ev.get("skipped") and state.get("_run_id") and ev.get("subcat_url") and sid:
+                _append_done(state["_run_id"], sid, ev["subcat_url"])
         elif e == "zone_end":
-            _zones_done[0] += 1
+            store_bar.value = min(store_bar.value + 1, n_st)
+            store_bar.description = f"Tiendas {store_bar.value}/{n_st}"
+            _set_pct(store_pct, store_bar.value, n_st)
             failed = ev.get("zone_failed")
             live_status.value = (f"<span style='color:#c0392b'>✗ {sn} · falló set_zone</span>" if failed
                                  else f"<span style='color:#27ae60'>✓ {sn} · {ev.get('n_rows',0)} filas</span>")
@@ -263,73 +407,127 @@ def run():
             live_status.value = "<span style='color:#27ae60'>✓ Recorrido completado.</span>"
         if _T0[0]:
             el = _time.time() - _T0[0]
-            parts = [f"<b>🧮 Filas:</b> {len(state['rows'])}",
-                     f"<b>Zonas:</b> {_zones_done[0]}/{n_st}",
-                     f"<b>Subcats:</b> {_subcats_done[0]}", f"<b>⏱</b> {_fmt(el)}"]
-            live_metrics.value = " · ".join(parts)
+            live_metrics.value = " · ".join([f"<b>🧮 Filas:</b> {len(state['rows'])}",
+                                             f"<b>⏱</b> {_fmt(el)}"])
 
     def _on_row(r):
         state["rows"].append(r)
+        if state.get("_run_id"):
+            _append_row(state["_run_id"], r)
 
-    async def _run_pipeline():
-        state["rows"] = []
+    async def _run_pipeline(resume=None):
         ts = datetime.now().strftime("%Y-%m-%d_%H%M")
-        subcats = state["selected_subcats"]
-        stores = list(state["selected_stores"])
-        shots = OUTPUT_DIR / "ferni_maestra_shots"
-        rows = await scrape_maestra(subcats, stores, headless=True,
-                                    screenshot_dir=str(shots),
-                                    progress_cb=_progress, on_row=_on_row)
-        out = OUTPUT_DIR / f"Maestra_Puertas_Sodimac_Ferni_{ts}.xlsx"
-        write_excel(rows, str(out))
-        state["output_path"] = out
-        return out, rows
+        if resume:
+            run_id = resume["run_id"]; meta = resume["meta"]
+            subcats = [tuple(x) for x in meta["subcats"]]
+            stores = meta["stores"]
+            done = resume["done"]
+            state["rows"] = list(resume["rows"])
+            shots_on = meta.get("screenshots", True)
+        else:
+            run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_ferni_maestra"
+            subcats = list(state["selected_subcats"])
+            stores = list(state["selected_stores"])
+            done = set()
+            state["rows"] = []
+            shots_on = bool(capture_screenshots.value)
+            _write_meta(run_id, {"run_id": run_id, "ts": ts, "subcats": subcats,
+                                 "stores": stores, "screenshots": shots_on, "finished": False})
+        state["_run_id"] = run_id
 
-    def _on_run(_b):
-        if state["running"] or not state.get("selected_subcats") or not state.get("selected_stores"):
+        store_bar.max = len(stores); store_bar.value = 0; _set_pct(store_pct, 0, len(stores))
+        subcat_bar.max = len(subcats); subcat_bar.value = 0; _set_pct(subcat_pct, 0, len(subcats))
+        _last_store[0] = None
+
+        shots = (OUTPUT_DIR / "ferni_maestra_shots") if shots_on else None
+        rows = await scrape_maestra(subcats, stores, headless=True,
+                                    screenshot_dir=(str(shots) if shots else None),
+                                    progress_cb=_progress, on_row=_on_row, done_keys=done)
+        # Usar el acumulado real (prior + nuevos) por si el engine devolvió solo nuevos.
+        all_rows = state["rows"] if resume else rows
+        out = OUTPUT_DIR / f"Maestra_Puertas_Sodimac_Ferni_{ts}.xlsx"
+        write_excel(all_rows, str(out))
+        state["output_path"] = out
+        _cleanup_run(run_id)  # Excel OK → borrar checkpoint
+        state["_run_id"] = None
+        return out, all_rows
+
+    def _start(resume=None):
+        if state["running"]:
             return
         state["running"] = True
         run_btn.layout.display = "none"
+        resume_panel.layout.display = "none"
         running_banner.value = ("<div class='fm-banner'><span class='fm-spinner'></span>"
                                 "Trabajando — no cierres esta pestaña ni la celda</div>")
         with result_out:
             clear_output()
         _t0 = _time.time()
         try:
-            out, rows = asyncio.get_event_loop().run_until_complete(_run_pipeline())
+            out, rows = asyncio.get_event_loop().run_until_complete(_run_pipeline(resume))
             with result_out:
                 display(HTML(
                     f"<div style='background:#e8f5e9;border:1px solid #66bb6a;padding:.9rem;"
                     f"border-radius:8px;'>✅ <b>Listo.</b> {len(rows)} filas.<br>"
                     f"📄 Archivo: <code>{out.name}</code></div>"))
-            _log_activity(mode="maestra", n_stores=len(state["selected_stores"]),
-                          n_rows_output=len(rows), runtime_s=int(_time.time() - _t0),
-                          output_file=out.name)
+            _log_activity(mode="maestra", n_stores=len(state.get("selected_stores") or []),
+                          n_rows_output=len(rows), runtime_s=int(_time.time() - _t0), output_file=out.name)
             if IN_COLAB:
-                try:
-                    colab_files.download(str(out))
-                except Exception:
-                    pass
+                try: colab_files.download(str(out))
+                except Exception: pass
                 redl = widgets.Button(description="Descargar Excel de nuevo", icon="download",
                                       button_style="info", layout=widgets.Layout(width="260px"))
                 redl.on_click(lambda _x: colab_files.download(str(out)))
-                with result_out:
-                    display(redl)
+                with result_out: display(redl)
         except Exception as e:
             with result_out:
                 display(HTML(f"<div style='background:#ffe4e4;border:1px solid #c0392b;"
-                             f"padding:.9rem;border-radius:8px;'>❌ Error: {e}</div>"))
+                             f"padding:.9rem;border-radius:8px;'>❌ Error: {e}<br>"
+                             f"<small>El checkpoint quedó guardado: podés reanudar.</small></div>"))
                 import traceback; traceback.print_exc()
         finally:
             state["running"] = False
             running_banner.value = ""
             run_btn.layout.display = ""
+            _refresh_resume_panel()
 
-    run_btn.on_click(_on_run)
+    run_btn.on_click(lambda _b: _start(None))
     run_container.children = [
         widgets.HTML("<h4 style='margin:.6rem 0 .3rem;'>🚀 Paso 3 — Ejecutar</h4>"),
-        run_summary, run_btn, running_banner, live_status, live_metrics, result_out,
-    ]
+        run_summary, resume_panel, run_btn, running_banner,
+        widgets.HBox([store_bar, store_pct], layout=widgets.Layout(align_items="center")),
+        widgets.HBox([subcat_bar, subcat_pct], layout=widgets.Layout(align_items="center")),
+        widgets.HBox([page_bar, page_pct], layout=widgets.Layout(align_items="center")),
+        live_status, live_metrics, result_out]
+
+    # ─── Panel de reanudación ──────────────────────────────────────────
+    def _refresh_resume_panel():
+        if state["running"]:
+            resume_panel.children = []; return
+        resumables = _find_resumable()
+        if not resumables:
+            resume_panel.children = []; return
+        cards = [widgets.HTML("<h4 style='margin:.4rem 0;'>🔄 Recorridos sin terminar (reanudables)</h4>")]
+        for rid, meta, prior_rows, done in resumables[:4]:
+            n_sc = len(meta.get("subcats") or []); n_st = len(meta.get("stores") or [])
+            info = widgets.HTML(
+                f"<div style='font-size:.9em;'>📦 <code>{meta.get('ts','?')}</code> · "
+                f"{n_sc} subcat × {n_st} tiendas · <b>{len(prior_rows)}</b> filas guardadas · "
+                f"{len(done)} (tienda×subcat) hechas</div>")
+            btn = widgets.Button(description="Reanudar", button_style="warning",
+                                 icon="play", layout=widgets.Layout(width="140px"))
+            dele = widgets.Button(description="Descartar", layout=widgets.Layout(width="120px"))
+            def _mk(rid=rid, meta=meta, prior_rows=prior_rows, done=done):
+                def _do(_b):
+                    _start({"run_id": rid, "meta": meta, "rows": prior_rows, "done": done})
+                return _do
+            def _mkdel(rid=rid):
+                def _do(_b):
+                    _cleanup_run(rid); _refresh_resume_panel()
+                return _do
+            btn.on_click(_mk()); dele.on_click(_mkdel())
+            cards.append(widgets.HBox([info, btn, dele], layout=widgets.Layout(align_items="center", gap="8px")))
+        resume_panel.children = cards
 
     watermark = widgets.HTML(
         "<div style='margin-top:1.2rem;padding-top:.6rem;border-top:1px solid #ddd;"
@@ -352,7 +550,8 @@ def run():
         discover_status.value = (f"<span style='color:#27ae60'>✓ {len(sections)} secciones · "
                                   f"{n_sub} subcategorías</span>")
         _build_sections_ui(sections)
-        _build_stores()
+        _update_stores()
         _refresh_selection()
+        _refresh_resume_panel()
         stores_container.layout.display = ""
         run_container.layout.display = ""

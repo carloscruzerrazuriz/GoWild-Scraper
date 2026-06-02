@@ -797,6 +797,9 @@ def write_excel(rows, output_file, columns=None):
             url_col_idx = final_cols.index("URL") + 1
             apply_url_truncation(ws, url_col_idx, ii, url_width=40, total_rows=len(rows) + 1)
 
+        from ._excel_utils import apply_clean_style
+        for _sn in wb.sheetnames:
+            apply_clean_style(wb[_sn])
         wb.save(output_file)
     except Exception as e:
         console.print(f"[yellow]Aviso embebiendo imágenes: {e}[/]")
