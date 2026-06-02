@@ -203,50 +203,108 @@ def run():
             list_box])
         return cont, (lambda: [b._payload for b in boxes if b.value]), boxes
 
-    # ─── Paso 1: descubrir + elegir secciones ──────────────────────────
-    discover_status = widgets.HTML("<span class='fm-spinner'></span>Descubriendo el árbol de categorías de Sodimac…")
-    sections_box = widgets.VBox()
-    sel_counter = widgets.HTML()
-    step1 = widgets.VBox([
-        widgets.HTML("<h4 style='margin:.3rem 0;'>📂 Paso 1 — Secciones a recorrer</h4>"),
-        discover_status, sections_box, sel_counter])
-
+    # ─── Paso 1: Sección a scrapear (IDÉNTICO a Maestra Sección Sodimac) ──
     stores_container = widgets.VBox(layout=widgets.Layout(display="none"))
     run_container = widgets.VBox(layout=widgets.Layout(display="none"))
-    _subcat_boxes = []
 
-    def _refresh_selection(*_):
-        sel = [cb._payload for cb in _subcat_boxes if cb.value]
-        state["selected_subcats"] = sel
-        sel_counter.value = (
-            f"<span style='color:#27ae60'>✓ {len(sel)} subcategoría(s) seleccionada(s)</span>"
-            if sel else "<span style='color:#c0392b'>⚠️ Seleccioná al menos 1 subcategoría</span>")
+    load_btn = widgets.Button(description="🔍 Cargar secciones", button_style="info",
+                              layout=widgets.Layout(width="220px"))
+    load_status = widgets.Output()
+    section_dd = widgets.Dropdown(description="Sección:",
+                                  layout=widgets.Layout(width="500px", display="none"),
+                                  style={"description_width": "initial"})
+    subcat_container = widgets.VBox(layout=widgets.Layout(display="none"))
+    _get_subcats = [lambda: []]  # getter del panel de subcats de la sección actual
+
+    mode_selector = widgets.RadioButtons(
+        options=[("Sección del menú de Sodimac", "menu"),
+                 ("URL personalizada (pegar link de categoría)", "url")],
+        value="menu", description="Modo:", style={"description_width": "initial"},
+        layout=widgets.Layout(width="500px"))
+    custom_url_input = widgets.Text(
+        description="URL:", placeholder="https://www.sodimac.cl/sodimac-cl/lista/CATG.../...",
+        layout=widgets.Layout(width="700px"), style={"description_width": "initial"})
+    custom_name_input = widgets.Text(
+        description="Nombre:", placeholder="ej: Pisos-y-revestimientos",
+        layout=widgets.Layout(width="500px"), style={"description_width": "initial"})
+    custom_box = widgets.VBox(
+        [widgets.HTML("<b>Categoría personalizada:</b><br>"
+                      "<span style='font-size:.85em;color:#666;'>Pegá una URL de listado "
+                      "de Sodimac (no funcionan URLs con <code>isLanding=true</code>).</span>"),
+         custom_url_input, custom_name_input],
+        layout=widgets.Layout(display="none", margin="6px 0"))
+
+    def on_mode_change(change=None):
+        if mode_selector.value == "menu":
+            load_btn.layout.display = ""
+            load_status.layout.display = ""
+            section_dd.layout.display = "" if section_dd.options else "none"
+            subcat_container.layout.display = "" if section_dd.options else "none"
+            custom_box.layout.display = "none"
+        else:
+            load_btn.layout.display = "none"
+            load_status.layout.display = "none"
+            section_dd.layout.display = "none"
+            subcat_container.layout.display = "none"
+            custom_box.layout.display = ""
         _update_run_summary()
+    mode_selector.observe(on_mode_change, "value")
 
-    def _build_sections_ui(sections):
-        _subcat_boxes.clear()
-        panes, titles = [], []
-        for section_name, subs in sections:
-            sec_boxes = []
-            for subcat_name, url in subs:
-                cb = widgets.Checkbox(value=False, description=subcat_name, indent=False,
-                                      layout=widgets.Layout(width="auto", margin="0"))
-                cb._payload = (section_name, subcat_name, url)
-                cb.observe(_refresh_selection, "value")
-                _subcat_boxes.append(cb); sec_boxes.append(cb)
-            all_cb = widgets.Checkbox(value=False, description=f"— Todas ({len(sec_boxes)}) —",
-                                      indent=False, layout=widgets.Layout(width="auto"))
-            def _toggle_all(change, boxes=sec_boxes):
-                for b in boxes: b.value = change["new"]
-            all_cb.observe(_toggle_all, "value")
-            panes.append(widgets.VBox([all_cb] + sec_boxes,
-                                      layout=widgets.Layout(max_height="240px", overflow_y="auto")))
-            titles.append(f"{section_name} ({len(sec_boxes)})")
-        acc = widgets.Accordion(children=panes)
-        for i, t in enumerate(titles):
-            acc.set_title(i, t)
-        acc.selected_index = None
-        sections_box.children = [acc]
+    def on_section_change(change=None):
+        if not section_dd.value:
+            return
+        _, subs = section_dd.value
+        items = [(n, (n, u)) for n, u in subs]
+        panel, getter, _bx = _checkbox_panel(items, all_checked=True, height="260px")
+        _get_subcats[0] = getter
+        for child in panel.children[1].children:
+            child.observe(lambda *_: _update_run_summary(), "value")
+        subcat_container.children = [widgets.HTML("<b>Subcategorías:</b>"), panel]
+        subcat_container.layout.display = ""
+        _update_run_summary()
+    section_dd.observe(on_section_change, "value")
+
+    def _collect_subcats():
+        """[(section, subcat, url), ...] según el modo (menú / URL personalizada)."""
+        if mode_selector.value == "url":
+            u = (custom_url_input.value or "").strip()
+            nm = (custom_name_input.value or "").strip() or "Categoría personalizada"
+            return [(nm, nm, u)] if u else []
+        if not section_dd.value:
+            return []
+        section_name, _subs = section_dd.value
+        return [(section_name, n, u) for (n, u) in _get_subcats[0]()]
+
+    def on_load_clicked(_b=None):
+        load_btn.disabled = True
+        with load_status:
+            clear_output()
+            display(HTML("<span class='fm-spinner'></span>Leyendo el megamenú de Sodimac…"))
+        try:
+            secs = asyncio.get_event_loop().run_until_complete(_discover())
+        except Exception as e:
+            with load_status:
+                clear_output(); print(f"❌ Error: {e}")
+            load_btn.disabled = False
+            return
+        if not secs:
+            with load_status:
+                clear_output(); print("❌ No se pudieron leer las secciones. Esperá unos segundos e intentá de nuevo.")
+            load_btn.disabled = False
+            return
+        state["sections"] = secs
+        section_dd.options = [(f"{n}  ·  {len(subs)} subcat.", (n, subs)) for n, subs in secs]
+        section_dd.layout.display = ""
+        section_dd.value = section_dd.options[0][1]
+        with load_status:
+            clear_output(); print(f"✓ {len(secs)} secciones cargadas.")
+        load_btn.disabled = False
+        _update_run_summary()
+    load_btn.on_click(on_load_clicked)
+
+    step1 = widgets.VBox([
+        widgets.HTML("<h4 style='margin:.3rem 0;'>📂 Paso 1 — Sección a scrapear</h4>"),
+        mode_selector, load_btn, load_status, section_dd, subcat_container, custom_box])
 
     async def _discover():
         async with Stealth().use_async(async_playwright()) as pw:
@@ -330,7 +388,7 @@ def run():
         w.value = "" if not t else f"<span style='color:#555;font-size:.9em;margin-left:8px;'>{v}/{t} · {int(round(100*v/t))}%</span>"
 
     def _update_run_summary(*_):
-        n_sc = len(state.get("selected_subcats") or [])
+        n_sc = len(_collect_subcats())
         n_st = len(state.get("selected_stores") or [])
         if n_sc and n_st:
             run_summary.value = (
@@ -426,7 +484,7 @@ def run():
             shots_on = meta.get("screenshots", True)
         else:
             run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_ferni_maestra"
-            subcats = list(state["selected_subcats"])
+            subcats = _collect_subcats()
             stores = list(state["selected_stores"])
             done = set()
             state["rows"] = []
@@ -538,20 +596,11 @@ def run():
 
     display(widgets.VBox([step1, stores_container, run_container, watermark]))
 
-    # ─── Lanzar descubrimiento (async) y poblar la UI ──────────────────
-    try:
-        sections = asyncio.get_event_loop().run_until_complete(_discover())
-    except Exception as e:
-        sections = []
-        discover_status.value = f"<span style='color:#c0392b'>❌ No se pudo descubrir el árbol: {e}</span>"
-    if sections:
-        state["sections"] = sections
-        n_sub = sum(len(s[1]) for s in sections)
-        discover_status.value = (f"<span style='color:#27ae60'>✓ {len(sections)} secciones · "
-                                  f"{n_sub} subcategorías</span>")
-        _build_sections_ui(sections)
-        _update_stores()
-        _refresh_selection()
-        _refresh_resume_panel()
-        stores_container.layout.display = ""
-        run_container.layout.display = ""
+    # Mostrar todo de una. Las secciones se cargan con el botón "Cargar secciones"
+    # (modo menú) o se pega una URL (modo URL personalizada) — igual que Maestra.
+    on_mode_change()
+    _update_stores()
+    _refresh_resume_panel()
+    stores_container.layout.display = ""
+    run_container.layout.display = ""
+    _update_run_summary()

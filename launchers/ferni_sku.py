@@ -260,17 +260,36 @@ def run():
     # ─── Paso 2: Zonas (presets como MK7) ──────────────────────────────
     stores_container = widgets.VBox(layout=widgets.Layout(display="none"))
 
-    def _checkbox_panel(items, height="240px"):
+    # _checkbox_panel IDÉNTICO al de Maestra Sección Sodimac: lista con borde +
+    # botones "Marcar todas / Desmarcar todas / Invertir" + contador "N de N".
+    def _checkbox_panel(items, all_checked=False, height="240px"):
         boxes = []
         for label, val in items:
-            cb = widgets.Checkbox(value=False, description=label, indent=False,
+            cb = widgets.Checkbox(value=all_checked, description=label, indent=False,
                                   layout=widgets.Layout(width="auto", margin="0"))
             cb._payload = val
             boxes.append(cb)
         list_box = widgets.VBox(boxes, layout=widgets.Layout(
             max_height=height, overflow_y="auto", border="1px solid #d0d0d0",
-            padding="6px 10px", width="640px"))
-        return list_box, (lambda: [b._payload for b in boxes if b.value]), boxes
+            border_radius="6px", padding="6px 10px", width="640px"))
+        btn_all = widgets.Button(description="Marcar todas", layout=widgets.Layout(width="130px"))
+        btn_none = widgets.Button(description="Desmarcar todas", layout=widgets.Layout(width="150px"))
+        btn_inv = widgets.Button(description="Invertir", layout=widgets.Layout(width="100px"))
+        counter = widgets.HTML()
+        def refresh_counter(*_):
+            n = sum(1 for b in boxes if b.value)
+            counter.value = f"<span style='color:#555;font-size:.9em;'>{n} de {len(boxes)} seleccionadas</span>"
+        for b in boxes:
+            b.observe(refresh_counter, "value")
+        btn_all.on_click(lambda _: [setattr(b, "value", True) for b in boxes])
+        btn_none.on_click(lambda _: [setattr(b, "value", False) for b in boxes])
+        btn_inv.on_click(lambda _: [setattr(b, "value", not b.value) for b in boxes])
+        refresh_counter()
+        container = widgets.VBox([
+            widgets.HBox([btn_all, btn_none, btn_inv, counter],
+                         layout=widgets.Layout(align_items="center", gap="8px")),
+            list_box])
+        return container, (lambda: [b._payload for b in boxes if b.value])
 
     rm = [s for s in ALL_ST if s["region"] == "Metropolitana"]
     presets = {
@@ -285,7 +304,8 @@ def run():
         options=list(presets.keys()), value=list(presets.keys())[0],
         description="Preset:", style={"description_width": "initial"},
         layout=widgets.Layout(width="auto"))
-    store_panel, _get_custom, _store_boxes = _checkbox_panel([(labeler(s), s) for s in ALL_ST])
+    store_panel, _get_custom = _checkbox_panel([(labeler(s), s) for s in ALL_ST],
+                                               all_checked=False, height="240px")
     store_panel_wrap = widgets.VBox([store_panel], layout=widgets.Layout(display="none"))
     store_eta = widgets.HTML()
 
@@ -305,8 +325,8 @@ def run():
         _update_run_summary()
 
     preset_radio.observe(_update_stores, "value")
-    for b in _store_boxes:
-        b.observe(_update_stores, "value")
+    for child in store_panel.children[1].children:
+        child.observe(_update_stores, "value")
     _update_stores()
 
     stores_container.children = [
