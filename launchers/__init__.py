@@ -15,6 +15,7 @@ _TOOLS = {
     "mk7":        "launchers.mk7",
     "maestra":    "launchers.maestra",
     "mayoristas": "launchers.mayoristas",
+    "ferni":      "launchers.ferni",
 }
 
 

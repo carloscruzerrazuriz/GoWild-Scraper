@@ -1,6 +1,6 @@
 # GoWild-Scraper
 
-Scrapers de precios y catálogos para **Sodimac · Falabella · Construmart**, distribuidos como notebooks Colab delgados con auto-actualización desde este repo.
+Scrapers de precios y catálogos para **Sodimac · Falabella · Construmart**, distribuidos como notebooks Colab delgados con auto-actualización desde este repo. Incluye **Ferni**, buscador especializado de **puertas** Sodimac (resuelve el selector de medidas).
 
 ## Arquitectura
 
@@ -9,13 +9,15 @@ GoWild-Scraper/
 ├── notebooks/        ← .ipynb DELGADOS (3 celdas) — esto es lo que el usuario abre en Colab
 │   ├── MK7_Buscador_SKUs.ipynb
 │   ├── Maestra_Seccion.ipynb
-│   └── Precios_Mayoristas.ipynb
+│   ├── Precios_Mayoristas.ipynb
+│   └── Buscador_Puertas_Sodimac.ipynb   ← Ferni (puertas)
 │
 ├── launchers/        ← UI ipywidgets + lógica de cada herramienta
 │   ├── __init__.py   ← función boot(tool_name)
 │   ├── mk7.py
 │   ├── maestra.py
-│   └── mayoristas.py
+│   ├── mayoristas.py
+│   └── ferni.py      ← Buscador de Puertas Sodimac
 │
 ├── engines/          ← motores de scraping (Sodimac, Falabella, Construmart, Maestras)
 │   ├── sodimac_engine.py
@@ -23,7 +25,8 @@ GoWild-Scraper/
 │   ├── construmart_engine.py
 │   ├── maestra_sodimac.py
 │   ├── maestra_falabella.py
-│   └── maestra_construmart.py
+│   ├── maestra_construmart.py
+│   └── ferni_sodimac.py   ← motor de puertas (extrae variants[] del __NEXT_DATA__)
 │
 └── version.json      ← versión + launcher_schema
 ```
@@ -48,6 +51,8 @@ Pega estos links a tus usuarios — abren el `.ipynb` más reciente del repo:
   `https://colab.research.google.com/github/carloscruzerrazuriz/GoWild-Scraper/blob/main/notebooks/Maestra_Seccion.ipynb`
 - 💰 Precios Mayoristas:
   `https://colab.research.google.com/github/carloscruzerrazuriz/GoWild-Scraper/blob/main/notebooks/Precios_Mayoristas.ipynb`
+- 🚪 Ferni — Buscador de Puertas:
+  `https://colab.research.google.com/github/carloscruzerrazuriz/GoWild-Scraper/blob/main/notebooks/Buscador_Puertas_Sodimac.ipynb`
 
 ## Para el mantenedor
 
