@@ -17,7 +17,9 @@ GoWild-Scraper/
 │   ├── mk7.py
 │   ├── maestra.py
 │   ├── mayoristas.py
-│   └── ferni.py      ← Buscador de Puertas Sodimac
+│   ├── ferni.py          ← Ferni HUB (selector de herramienta)
+│   ├── ferni_sku.py      ← Ferni: Buscador de Puertas por SKU
+│   └── ferni_maestra.py  ← Ferni: Maestra Sección Sodimac (por categoría)
 │
 ├── engines/          ← motores de scraping (Sodimac, Falabella, Construmart, Maestras)
 │   ├── sodimac_engine.py
@@ -26,7 +28,8 @@ GoWild-Scraper/
 │   ├── maestra_sodimac.py
 │   ├── maestra_falabella.py
 │   ├── maestra_construmart.py
-│   └── ferni_sodimac.py   ← motor de puertas (extrae variants[] del __NEXT_DATA__)
+│   ├── ferni_sodimac.py          ← motor puertas por SKU (variants[] del __NEXT_DATA__)
+│   └── ferni_maestra_sodimac.py  ← motor Maestra por categoría (reusa crawl + variants[])
 │
 └── version.json      ← versión + launcher_schema
 ```

@@ -1,6 +1,6 @@
 {
-  "version": "2.3.0",
+  "version": "2.4.0",
   "launcher_schema": "1.0",
   "architecture": "thin-launcher",
-  "notes": "Notebooks delgados (~3 celdas) + lógica en launchers/*.py. Updates via git pull automáticos. Si launcher_schema cambia, hay que reenviar el .ipynb a los usuarios. v2.3.0: nueva herramienta Ferni (Buscador de Puertas Sodimac) — resuelve el selector de medidas via variants[] del __NEXT_DATA__."
+  "notes": "Notebooks delgados (~3 celdas) + lógica en launchers/*.py. Updates via git pull automáticos. Si launcher_schema cambia, hay que reenviar el .ipynb a los usuarios. v2.4.0: Ferni ahora es un hub con selector (boot('ferni')) → Buscador por SKU (ferni_sku) o Maestra Sección por categoría (ferni_maestra), ambos con extracción de variants[] (medidas exactas para puertas y más)."
 }
