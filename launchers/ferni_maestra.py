@@ -335,7 +335,7 @@ def run():
     store_panel_wrap = widgets.VBox([store_panel], layout=widgets.Layout(display="none"))
     store_eta = widgets.HTML()
     capture_screenshots = widgets.Checkbox(
-        value=True, description="Capturar screenshots de cards (Excel más pesado)",
+        value=False, description="Capturar screenshots de cards (Excel más pesado y lento)",
         indent=False, layout=widgets.Layout(width="auto"))
 
     def _update_stores(*_):
