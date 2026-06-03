@@ -12,10 +12,11 @@ from __future__ import annotations
 LAUNCHER_SCHEMA = "1.0"
 
 _TOOLS = {
-    "mk7":        "launchers.mk7",
-    "maestra":    "launchers.maestra",
-    "mayoristas": "launchers.mayoristas",
-    "ferni":      "launchers.ferni",
+    "mk7":          "launchers.mk7",
+    "maestra":      "launchers.maestra",
+    "mayoristas":   "launchers.mayoristas",
+    "ferni":        "launchers.ferni",
+    "competidores": "launchers.competidores",
 }
 
 

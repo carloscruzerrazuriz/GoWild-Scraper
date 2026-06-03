@@ -1,6 +1,6 @@
 {
-  "version": "2.5.0",
+  "version": "2.6.0",
   "launcher_schema": "1.0",
   "architecture": "thin-launcher",
-  "notes": "Notebooks delgados (~3 celdas) + lógica en launchers/*.py. Updates via git pull automáticos. Si launcher_schema cambia, hay que reenviar el .ipynb a los usuarios. v2.4.0: Ferni ahora es un hub con selector (boot('ferni')) → Buscador por SKU (ferni_sku) o Maestra Sección por categoría (ferni_maestra), ambos con extracción de variants[] (medidas exactas para puertas y más)."
+  "notes": "Notebooks delgados (~3 celdas) + lógica en launchers/*.py. Updates via git pull automáticos. Si launcher_schema cambia, hay que reenviar el .ipynb a los usuarios. v2.6.0: nuevo Colab 'Competidores' (boot('competidores')) para inteligencia de precios de la competencia: engines de API comp_puntomaestro (VTEX), comp_ferrobal (WooCommerce), comp_imperial (Oracle Commerce Cloud) + delega Sodimac/Construmart en la Maestra de producción. Contrato uniforme engines/comp_base.py. v2.4.0: Ferni hub (boot('ferni')) → Buscador por SKU o Maestra Sección, ambos con variants[]."
 }
