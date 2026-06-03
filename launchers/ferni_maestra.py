@@ -504,7 +504,7 @@ def run():
         # Usar el acumulado real (prior + nuevos) por si el engine devolvió solo nuevos.
         all_rows = state["rows"] if resume else rows
         out = OUTPUT_DIR / f"Maestra_Puertas_Sodimac_Ferni_{ts}.xlsx"
-        write_excel(all_rows, str(out))
+        write_excel(all_rows, str(out), with_images=shots_on)
         state["output_path"] = out
         _cleanup_run(run_id)  # Excel OK → borrar checkpoint
         state["_run_id"] = None

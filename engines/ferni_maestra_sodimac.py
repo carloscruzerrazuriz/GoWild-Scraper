@@ -484,38 +484,39 @@ OUTPUT_COLS = [
 ]
 
 
-def write_excel(rows, output_file):
-    """Escribe el Excel (hojas 'Datos' + 'Con fotos') con el mismo estilo limpio
-    que el buscador de puertas: cabecera celeste, freeze, auto-filtro, anchos,
-    SKU como texto, screenshot de card embebida."""
+def write_excel(rows, output_file, *, with_images=True):
+    """Escribe el Excel en UNA sola hoja ('Datos') con el estilo limpio unificado
+    (cabecera celeste, auto-filtro, anchos, SKU como texto).
+
+    A diferencia del buscador por SKU, NO genera dos hojas. El toggle de la UI
+    decide vía `with_images`: si True, agrega la columna 'Imagen' con la
+    screenshot de la card embebida; si False, no incluye imágenes (Excel liviano)."""
     df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=OUTPUT_COLS)
     for c in OUTPUT_COLS:
         if c not in df.columns:
             df[c] = ""
     img_paths = list(df["Image Path"]) if "Image Path" in df.columns else ["" for _ in range(len(df))]
     out = df[OUTPUT_COLS].copy()
+    if with_images:
+        out["Imagen"] = ""
 
     with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
         out.to_excel(writer, sheet_name="Datos", index=False)
-        out_imgs = out.copy()
-        out_imgs["Imagen"] = ""
-        out_imgs.to_excel(writer, sheet_name="Con fotos", index=False)
 
     try:
         import openpyxl
         from openpyxl.drawing.image import Image as OpenpyxlImage
         from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, TwoCellAnchor
         from openpyxl.utils import get_column_letter
-        from openpyxl.styles import PatternFill, Font, Alignment
 
         wb = openpyxl.load_workbook(output_file)
+        ws = wb["Datos"]
 
-        def _force_text_skus(ws):
-            headers = {cell.value: cell.column for cell in ws[1]}
-            col_idx = headers.get("SKU")
-            if not col_idx:
-                return
-            for row in ws.iter_rows(min_row=2, min_col=col_idx, max_col=col_idx):
+        # SKU como texto (sin .0).
+        headers = {cell.value: cell.column for cell in ws[1]}
+        sku_idx = headers.get("SKU")
+        if sku_idx:
+            for row in ws.iter_rows(min_row=2, min_col=sku_idx, max_col=sku_idx):
                 for cell in row:
                     if cell.value in (None, ""):
                         continue
@@ -525,14 +526,8 @@ def write_excel(rows, output_file):
                     cell.value = s
                     cell.number_format = "@"
 
-        for sn in ("Datos", "Con fotos"):
-            if sn in wb.sheetnames:
-                _force_text_skus(wb[sn])
-
-        # Embed screenshots en 'Con fotos'.
-        if "Con fotos" in wb.sheetnames:
-            ws = wb["Con fotos"]
-            headers = {cell.value: cell.column for cell in ws[1]}
+        # Embed screenshots (solo si with_images y hay columna Imagen).
+        if with_images:
             img_col_idx = headers.get("Imagen")
             if img_col_idx:
                 ws.column_dimensions[get_column_letter(img_col_idx)].width = 26
@@ -554,9 +549,7 @@ def write_excel(rows, output_file):
         # Estética unificada (cabecera celeste, auto-filtro, anchos auto, URL
         # truncada con spacer, SIN freeze) — helper compartido en _excel_utils.
         from ._excel_utils import apply_clean_style
-        for sn in ("Datos", "Con fotos"):
-            if sn in wb.sheetnames:
-                apply_clean_style(wb[sn])
+        apply_clean_style(ws)
 
         wb.save(output_file)
     except Exception:
