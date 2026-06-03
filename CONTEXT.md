@@ -99,7 +99,7 @@ GoWild-Scraper/
 
 **Repository 1: PRIVATE (Development Only)**
 ```
-GoWild-Scraper-Private/  
+internal-tools (PRIVATE)
 ├── notebooks/           ← Source notebooks (development)
 ├── launchers/           ← Source code (SENSITIVE)
 ├── engines/             ← Source code (SENSITIVE)
@@ -110,7 +110,7 @@ GoWild-Scraper-Private/
 
 **Repository 2: PUBLIC (Distribution)**
 ```
-GoWild-Scraper/         ← Users clone this
+GoWild-Scraper (PUBLIC)
 ├── notebooks/           ← Distribution notebooks (minimal)
 ├── launchers/           ← Only .pyc compiled files
 │   ├── __pycache__/
@@ -139,37 +139,59 @@ GoWild-Scraper/         ← Users clone this
 
 ---
 
+## Repository Status
+
+### **Private Repository Created** ✅
+- **Name:** `internal-tools`
+- **Visibility:** PRIVATE
+- **URL:** https://github.com/carloscruzerrazuriz/internal-tools
+- **Purpose:** Development only - contains full source code
+- **Access:** Only you
+
+### **Public Repository (Existing)** 
+- **Name:** `GoWild-Scraper`
+- **Visibility:** PUBLIC
+- **URL:** https://github.com/carloscruzerrazuriz/GoWild-Scraper
+- **Purpose:** Distribution - will contain only compiled `.pyc` files
+- **User Colab Links:** Already distributed, will auto-update with compiled code
+
+---
+
 ## Implementation Steps
 
-### **Step 1: Create Two Repositories**
+### **Step 1: Push Code to Private Repo**
 
-**Repository 1: Private Development Repo**
+In your terminal:
+
 ```bash
-# Clone your EXISTING repo and make a backup for private development
-git clone https://github.com/carloscruzerrazuriz/GoWild-Scraper.git GoWild-Scraper-Private
-cd GoWild-Scraper-Private
+# Navigate to your GoWild-Scraper directory
+cd ~/path/to/GoWild-Scraper
 
-# Push to new private repo (you create it in GitHub settings first)
-git remote set-url origin https://github.com/carloscruzerrazuriz/GoWild-Scraper-Private.git
+# Change remote to point to internal-tools (private repo)
+git remote set-url origin https://github.com/carloscruzerrazuriz/internal-tools.git
+
+# Ensure you're on main branch
+git branch -M main
+
+# Push all code to private repo
 git push -u origin main
 ```
 
-**Repository 2: Public Distribution Repo**
-- Keep your existing `GoWild-Scraper` public
-- This is where compiled files go (created automatically)
+**Verify:** Go to https://github.com/carloscruzerrazuriz/internal-tools and confirm all your code is there.
 
 ### **Step 2: Create Build Script in Private Repo (`build.py`)**
+
+Create this file in `internal-tools`:
 
 ```python
 import py_compile
 import os
-import shutil
 from pathlib import Path
 
 def build_compiled_version():
     """
-    Compile Python files to bytecode and prepare for public distribution.
-    Run this in the PRIVATE repo before pushing to public repo.
+    Compile Python files to bytecode for distribution.
+    Creates .pyc files in __pycache__ directories.
     """
     
     dirs_to_compile = ['engines', 'launchers']
@@ -180,12 +202,12 @@ def build_compiled_version():
             
         print(f"Compiling {directory}/...")
         
-        # Create __pycache__ for each directory
+        # Create __pycache__ directory
         pycache_dir = Path(directory) / '__pycache__'
         pycache_dir.mkdir(exist_ok=True)
         
         for py_file in Path(directory).glob('*.py'):
-            # Keep __init__.py as source (needed for imports)
+            # Keep __init__.py as source (Python needs it for imports)
             if py_file.name == '__init__.py':
                 print(f"  → {py_file.name} (kept as source)")
                 continue
@@ -200,10 +222,12 @@ def build_compiled_version():
 
 if __name__ == "__main__":
     build_compiled_version()
-    print("\n✅ Build complete! Compiled files in __pycache__/")
+    print("\n✅ Build complete!")
 ```
 
-### **Step 3: Create GitHub Actions Workflow in Private Repo (`.github/workflows/build-and-publish.yml`)**
+### **Step 3: Create GitHub Actions Workflow**
+
+Create file: `.github/workflows/build-and-publish.yml` in `internal-tools`:
 
 ```yaml
 name: Build and Publish Compiled Version
@@ -247,9 +271,11 @@ jobs:
           https://x-access-token:${{ env.PUBLIC_REPO_TOKEN }}@github.com/carloscruzerrazuriz/GoWild-Scraper.git \
           public_repo
         
-        # Copy compiled files to public repo
+        # Copy compiled bytecode files to public repo
         cp -r engines/__pycache__ public_repo/engines/
         cp -r launchers/__pycache__ public_repo/launchers/
+        
+        # Copy __init__.py files (needed for Python imports)
         cp engines/__init__.py public_repo/engines/ 2>/dev/null || true
         cp launchers/__init__.py public_repo/launchers/ 2>/dev/null || true
         
@@ -257,72 +283,39 @@ jobs:
         cp -r notebooks/*.ipynb public_repo/notebooks/
         cp version.json public_repo/
         
-        # Commit and push
+        # Commit and push to public repo
         cd public_repo
         git config user.email "action@github.com"
         git config user.name "GitHub Action (Build)"
         git add -A
-        git commit -m "🔐 Auto-build: Publish compiled bytecode version [skip ci]" || echo "No changes"
+        git commit -m "🔐 Auto-build: Publish compiled bytecode version [skip ci]" || echo "No changes to commit"
         git push origin main
 ```
 
-**Note:** You need to:
-1. Create a GitHub Personal Access Token for the public repo
-2. Add it as a secret `PUBLIC_REPO_PUSH_TOKEN` in the private repo settings
+### **Step 4: Set Up GitHub Token for Automation**
 
-### **Step 4: Update Colab Bootstrap Cell to Use Sparse Checkout**
+To allow the workflow to push to the public repo:
 
-In your notebooks' **Cell #2 (Bootstrap)**, replace the git clone with sparse checkout:
+1. Go to https://github.com/settings/tokens/new
+2. Create a **Personal Access Token** with:
+   - Name: `PUBLIC_REPO_PUSH_TOKEN`
+   - Expiration: 90 days (or longer)
+   - Scopes: Select `repo` (full control)
+3. Copy the token
+4. Go to **internal-tools** repo → **Settings** → **Secrets and variables** → **Actions**
+5. Click **"New repository secret"**
+6. Name: `PUBLIC_REPO_PUSH_TOKEN`
+7. Value: (paste the token you copied)
+8. Click **"Add secret"**
 
-```python
-# === BOOTSTRAP CELL - Auto-update from compiled repo ===
+### **Step 5: Update Public Repo `.gitignore`**
 
-import subprocess
-import sys
-import os
-
-REPO_URL = "https://github.com/carloscruzerrazuriz/GoWild-Scraper.git"
-LOCAL_DIR = "/content/gowild"
-
-print("📥 Loading compiled modules (source code protected)...")
-
-# Clone with sparse checkout - only get compiled code
-if not os.path.exists(LOCAL_DIR):
-    subprocess.run([
-        "git", "clone", 
-        "--depth", "1",
-        "--sparse",
-        REPO_URL, 
-        LOCAL_DIR
-    ], check=True, capture_output=True)
-    
-    os.chdir(LOCAL_DIR)
-    
-    # Sparse checkout: only compiled __pycache__ directories
-    subprocess.run([
-        "git", "sparse-checkout", "set",
-        "launchers",
-        "engines",
-        "version.json"
-    ], check=True, capture_output=True)
-else:
-    # Update existing
-    os.chdir(LOCAL_DIR)
-    subprocess.run(["git", "pull", "--depth", "1"], check=True, capture_output=True)
-
-# Add to path
-if LOCAL_DIR not in sys.path:
-    sys.path.insert(0, LOCAL_DIR)
-
-print("✅ Compiled modules loaded! (IP protected)")
-```
-
-### **Step 5: Configure .gitignore in Public Repo**
+In `GoWild-Scraper`, update `.gitignore`:
 
 ```gitignore
-# Source files - NEVER committed to public repo
+# Remove source .py files - only keep compiled
 *.py
-!__init__.py
+!**/__init__.py
 !notebooks/*.ipynb
 
 # Keep compiled bytecode
@@ -336,75 +329,103 @@ __pycache__/
 .Python
 env/
 venv/
+.DS_Store
+*.egg-info/
+dist/
+build/
 ```
 
-### **Step 6: Update README.md**
+### **Step 6: Update Colab Bootstrap Cell**
 
-Add a section in your public repo README:
+In your notebooks (cell #2), update the bootstrap to use sparse-checkout:
 
-```markdown
-## ⚠️ About This Repository
+```python
+# === BOOTSTRAP CELL - Auto-update from compiled repo ===
 
-This repository contains **compiled bytecode distributions** of the GoWild-Scraper tools.
+import subprocess
+import sys
+import os
+import json
 
-- **Source code is not included** for intellectual property protection
-- **All functionality is preserved** - works exactly the same as source code
-- **Code cannot be inspected or modified** by end users
-- **Auto-updates are automatic** - users get latest compiled version on each run
+REPO_URL = "https://github.com/carloscruzerrazuriz/GoWild-Scraper.git"
+LOCAL_DIR = "/content/gowild"
 
-This is a standard security practice used by commercial software providers.
+print("📥 Loading compiled modules (source code protected)...")
+
+try:
+    if not os.path.exists(LOCAL_DIR):
+        # First clone with sparse checkout
+        subprocess.run([
+            "git", "clone", 
+            "--depth", "1",
+            "--sparse",
+            REPO_URL, 
+            LOCAL_DIR
+        ], check=True, capture_output=True)
+        
+        os.chdir(LOCAL_DIR)
+        
+        # Configure sparse checkout - only get compiled code
+        subprocess.run([
+            "git", "sparse-checkout", "set",
+            "launchers",
+            "engines",
+            "notebooks",
+            "version.json"
+        ], check=True, capture_output=True)
+    else:
+        # Update existing repo
+        os.chdir(LOCAL_DIR)
+        subprocess.run(["git", "pull", "--depth", "1"], check=True, capture_output=True)
+    
+    # Add to path
+    if LOCAL_DIR not in sys.path:
+        sys.path.insert(0, LOCAL_DIR)
+    
+    # Verify schema version
+    with open(f"{LOCAL_DIR}/version.json") as f:
+        version_data = json.load(f)
+        launcher_schema = version_data.get("launcher_schema", "unknown")
+        print(f"✅ Compiled modules loaded! (Schema: {launcher_schema})")
+        print("   → Source code protected with bytecode compilation")
+        
+except Exception as e:
+    print(f"❌ Error loading modules: {e}")
+    raise
 ```
 
 ---
 
-## Development Workflow
-
-### **In Your PRIVATE Repo:**
-
-```bash
-# 1. Make changes to source code
-# - Edit engines/sodimac_engine.py
-# - Edit launchers/mk7.py
-# - etc.
-
-# 2. Commit locally
-git add .
-git commit -m "Fix: sodimac scraper selectors"
-
-# 3. Push to private repo
-git push origin main
-
-# 4. GitHub Actions automatically:
-#    - Runs build.py (compiles .py to .pyc)
-#    - Pushes compiled files to PUBLIC repo
-```
-
-### **In the PUBLIC Repo (Auto-Updated):**
+## Workflow: Development to Distribution
 
 ```
-Users see:
-├── notebooks/                    ← Can read/modify
-├── launchers/__pycache__/       ← Compiled only (unreadable)
-├── engines/__pycache__/         ← Compiled only (unreadable)
-└── version.json                 ← Metadata
+1. You work in PRIVATE REPO (internal-tools)
+   ├─ Edit: engines/sodimac_engine.py
+   ├─ Edit: launchers/mk7.py
+   └─ Commit and push
 
-Users cannot see:
-❌ launchers/mk7.py
-❌ launchers/maestra.py
-❌ engines/sodimac_engine.py
-❌ (all source .py files)
+2. GitHub Actions triggers automatically
+   ├─ Runs: python build.py
+   ├─ Creates: .pyc compiled files
+   └─ Pushes to PUBLIC REPO (GoWild-Scraper)
+
+3. Users' Colab notebooks auto-update
+   ├─ Pull latest from GoWild-Scraper
+   ├─ Get only compiled .pyc files
+   ├─ See NO source code
+   └─ Everything works perfectly ✅
 ```
 
 ---
 
 ## How It Works for Users
 
-1. **User clicks Colab link** → Opens notebook from public repo
-2. **Notebook runs bootstrap cell** → Git clone of public repo (only compiled files)
+1. **User opens existing Colab notebook** → No changes needed, same URL
+2. **Bootstrap cell runs** → Clones public repo (only compiled files)
 3. **Sparse checkout pulls** → Only `launchers/__pycache__/` and `engines/__pycache__/`
-4. **Python imports modules** → `from launchers import boot` loads compiled bytecode
-5. **Code executes normally** → User gets full functionality
-6. **Code is completely inaccessible** → No source files exist in public repo to inspect
+4. **Imports load compiled bytecode** → Python loads `.pyc` files seamlessly
+5. **Code executes** → Full functionality, identical to source code
+6. **Code is protected** → No source files exist in public repo to inspect
 
 ---
 
@@ -416,6 +437,7 @@ Users cannot see:
 | Users can inspect? | ✅ YES | ⚠️ DIFFICULT | ❌ NO |
 | Can be decompiled? | ✅ EASILY | ⚠️ POSSIBLE | ❌ FILES DON'T EXIST |
 | IP Protected? | ❌ NO | ⚠️ PARTIAL | ✅ MAXIMUM |
+| User friction? | 🟢 None | 🟢 None | 🟢 None |
 | Complexity? | 🟢 Low | 🟡 Medium | 🟠 High |
 | Recommended? | ❌ | ❌ | ✅ YES |
 
@@ -424,8 +446,8 @@ Users cannot see:
 ## Current Development Environment
 
 - **Editor:** Antigravity + Claude (Aider)
-- **Private Repository:** `carloscruzerrazuriz/GoWild-Scraper-Private` (to create)
-- **Public Repository:** `carloscruzerrazuriz/GoWild-Scraper` (exists, will be updated)
+- **Private Repository:** `carloscruzerrazuriz/internal-tools` ✅ CREATED
+- **Public Repository:** `carloscruzerrazuriz/GoWild-Scraper` ✅ EXISTS
 - **Visibility:** Private (dev) → Public (distribution)
 - **Language:** Python
 - **Automation:** GitHub Actions
@@ -434,53 +456,54 @@ Users cannot see:
 
 ## Setup Checklist
 
-- [ ] Create private repository: `GoWild-Scraper-Private`
-- [ ] Push existing code to private repo
+- [x] Create private repository: `internal-tools`
+- [ ] Push code to private repo: `git push -u origin main`
 - [ ] Create `build.py` in private repo
 - [ ] Create `.github/workflows/build-and-publish.yml` in private repo
-- [ ] Generate GitHub Personal Access Token for public repo
-- [ ] Add `PUBLIC_REPO_PUSH_TOKEN` secret to private repo settings
-- [ ] Update `.gitignore` in public repo (keep only `.pyc` and `__init__.py`)
+- [ ] Generate GitHub Personal Access Token
+- [ ] Add `PUBLIC_REPO_PUSH_TOKEN` secret to private repo
+- [ ] Update public repo `.gitignore` (keep only `.pyc` and `__init__.py`)
 - [ ] Update bootstrap cell in notebooks to use sparse-checkout
-- [ ] Test: Make change in private repo → Verify it appears compiled in public repo
-- [ ] Update README with IP protection notice
+- [ ] Test: Make change in private repo → Verify compiled version in public repo
+- [ ] Update README.md with IP protection notice
 
 ---
 
-## Next Steps in Aider
+## Next Steps
 
-When you resume work in Claude + Aider:
+### **Immediate (In Terminal):**
 
-```
-"I want to set up a two-repository approach for IP protection:
-1. Create build.py that compiles .py files to .pyc in __pycache__
-2. Create GitHub Actions workflow that pushes compiled files to public repo
-3. Update notebook bootstrap cell to use sparse-checkout for compiled files only
-4. Create/update .gitignore to keep only .pyc files, remove .py sources from public repo"
-```
+1. **Push your code to private repo:**
+   ```bash
+   cd ~/path/to/GoWild-Scraper
+   git remote set-url origin https://github.com/carloscruzerrazuriz/internal-tools.git
+   git branch -M main
+   git push -u origin main
+   ```
 
-Or more specifically:
+2. **Verify:** https://github.com/carloscruzerrazuriz/internal-tools should have all your code
 
-```
-"Help me create the GitHub Actions workflow that:
-1. Builds compiled .pyc files from my private repo
-2. Pushes ONLY the compiled files to my public distribution repo
-3. Keeps source code private"
-```
+### **Then in Aider/Claude:**
 
----
+Ask Claude to help you:
+1. Create `build.py` in the private repo
+2. Create `.github/workflows/build-and-publish.yml` 
+3. Update notebook bootstrap cells with sparse-checkout code
+4. Update `.gitignore` in public repo
 
-## Questions for Claude in Aider
-
-- *"Create the `build.py` script that compiles Python files to `.pyc` in `__pycache__` directories"*
-- *"Create the GitHub Actions workflow that builds and publishes compiled bytecode to the public repo"*
-- *"Update the Colab bootstrap cell to use sparse-checkout for compiled files"*
-- *"Set up the `.gitignore` so public repo only contains `.pyc` and `__init__.py`, no source `.py` files"*
-- *"How do I manage the GitHub Personal Access Token for the workflow?"*
+Or tell me when you're ready and I can create these files for you!
 
 ---
 
-**Status:** Ready for implementation  
-**Recommended:** Start with creating the private repo, then build.py, then GitHub Actions workflow  
-**Timeline:** 2-3 development sessions to fully implement
+## References
 
+- **Private Repo:** https://github.com/carloscruzerrazuriz/internal-tools (for development)
+- **Public Repo:** https://github.com/carloscruzerrazuriz/GoWild-Scraper (for distribution)
+- **Current Architecture:** Thin notebooks + auto-updating compiled modules
+- **Auto-Update Mechanism:** Bootstrap cell pulls compiled `.pyc` files via sparse-checkout
+
+---
+
+**Status:** Ready for next implementation phase  
+**Current User Impact:** ZERO - Existing Colab notebooks will continue to work unchanged  
+**Security:** Users will receive compiled bytecode, source code stays private
