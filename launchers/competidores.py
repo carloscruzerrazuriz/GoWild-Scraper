@@ -180,13 +180,28 @@ def _run_api_ui(eng):
         _update_summary()
     section_dd.observe(on_section_change, "value")
 
+    def _discover_progress(ev):
+        # Feedback durante la carga de secciones (Imperial escanea el catálogo).
+        if ev.get("event") != "discover":
+            return
+        ph = ev.get("phase"); done = ev.get("done", 0); tot = ev.get("total", 0)
+        if ph == "scan" and tot:
+            load_status.clear_output(wait=True)
+            with load_status:
+                display(HTML(f"<span class='c-spinner'></span>Escaneando catálogo de "
+                             f"{retailer}… {done}/{tot} ({int(round(100*done/tot))}%)"))
+        elif ph == "names":
+            load_status.clear_output(wait=True)
+            with load_status:
+                display(HTML("<span class='c-spinner'></span>Resolviendo nombres de secciones…"))
+
     def on_load(_b=None):
         load_btn.disabled = True
         with load_status:
             clear_output()
             display(HTML(f"<span class='c-spinner'></span>Cargando secciones de {retailer}…"))
         try:
-            secs = eng.discover_sections()
+            secs = eng.discover_sections(progress_cb=_discover_progress)
         except Exception as e:
             with load_status:
                 clear_output(); print(f"❌ Error cargando secciones: {e}")
@@ -202,6 +217,21 @@ def _run_api_ui(eng):
         load_btn.disabled = False
         on_section_change()
     load_btn.on_click(on_load)
+
+    # ─── Opciones: zona (si el engine la soporta) + imágenes ────────────
+    _zones = getattr(eng, "ZONES", None)
+    zone_dd = None
+    if _zones:
+        zone_dd = widgets.Dropdown(
+            options=list(_zones), value=_zones[0][1],
+            description=getattr(eng, "ZONE_TITLE", "Zona") + ":",
+            style={"description_width": "initial"},
+            layout=widgets.Layout(width="460px"))
+    # Toggle de imágenes — SIEMPRE apagado por defecto (Excel más liviano y rápido).
+    img_toggle = widgets.Checkbox(
+        value=False, indent=False,
+        description="Incluir imágenes de producto (Excel más pesado y lento)",
+        layout=widgets.Layout(width="auto"))
 
     # ─── Paso 2: ejecutar ────────────────────────────────────────────────
     run_btn = widgets.Button(description="🚀 Iniciar recorrido", button_style="success",
@@ -262,12 +292,18 @@ def _run_api_ui(eng):
         subcats = _selected_subcats()
         subcat_bar.max = len(subcats) or 1
         ts = datetime.now().strftime("%Y-%m-%d_%H%M")
+        zone = zone_dd.value if zone_dd else None
+        with_images = bool(img_toggle.value)
         t0 = _time.time()
         try:
             rows = eng.scrape_section(subcats, on_row=lambda r: state["rows"].append(r),
-                                      progress_cb=_progress)
+                                      progress_cb=_progress, zone=zone)
+            if with_images:
+                with result_out:
+                    display(HTML("<span class='c-spinner'></span>Descargando y embebiendo "
+                                 "imágenes… (puede tardar)"))
             out = OUTPUT_DIR / f"Competidores_{retailer}_{ts}.xlsx"
-            eng.write_excel(rows, str(out))
+            eng.write_excel(rows, str(out), with_images=with_images)
             state["output_path"] = out
             n_priced = sum(1 for r in rows if r.get("Precio Internet") not in (None, ""))
             with result_out:
@@ -308,7 +344,14 @@ def _run_api_ui(eng):
     step1 = widgets.VBox([
         widgets.HTML("<h4 style='margin:.3rem 0;'>📂 Paso 1 — Secciones</h4>"),
         load_btn, load_status, section_dd, subcat_container])
+    opt_children = [widgets.HTML("<h4 style='margin:.6rem 0 .3rem;'>⚙️ Opciones</h4>")]
+    if zone_dd is not None:
+        opt_children.append(zone_dd)
+    opt_children.append(img_toggle)
+    options_box = widgets.VBox(opt_children)
+
     step2 = widgets.VBox([
+        options_box,
         widgets.HTML("<h4 style='margin:.6rem 0 .3rem;'>🚀 Paso 2 — Ejecutar</h4>"),
         summary, run_btn, banner,
         widgets.HBox([subcat_bar, subcat_pct], layout=widgets.Layout(align_items="center")),

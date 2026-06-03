@@ -27,7 +27,7 @@ _PER_PAGE = 100
 _MAX_PAGES = 50  # tope de seguridad por categoría
 
 
-def discover_sections():
+def _discover_sections():
     """[(sección, [(subcategoría, category_id), ...]), ...] desde las categorías Woo.
 
     Agrupa las categorías por su `parent`: las hijas cuelgan de su padre; las
@@ -84,17 +84,27 @@ def _extract(p, seccion, subcat):
     prices = p.get("prices") or {}
     internet = _money(prices, "price")
     normal = _money(prices, "regular_price")
+    imgs = p.get("images") or []
+    img = (imgs[0].get("thumbnail") or imgs[0].get("src")) if imgs else ""
     return _b.make_row(
         tienda=RETAILER_NAME, seccion=seccion, subcat=subcat,
         marca="", sku=p.get("sku", ""),
         descripcion=p.get("name", ""),
         precio_normal=normal, precio_internet=internet,
-        url=p.get("permalink", ""),
+        url=p.get("permalink", ""), img=img,
     )
 
 
-def scrape_section(subcats, *, on_row=None, progress_cb=None, limit=None):
-    """subcats: [(sección, subcategoría, category_id), ...]. Devuelve filas."""
+def discover_sections(progress_cb=None):  # noqa: ARG001 (progress_cb por uniformidad)
+    return _discover_sections()
+
+
+def scrape_section(subcats, *, on_row=None, progress_cb=None, limit=None, zone=None):
+    """subcats: [(sección, subcategoría, category_id), ...]. Devuelve filas.
+
+    `zone` se ignora: Ferrobal (WooCommerce) tiene precio único (sin price-list
+    por zona); la comuna sólo aplica al despacho en el checkout.
+    """
     rows = []
     total = len(subcats)
     for idx, (seccion, subcat, cat_id) in enumerate(subcats, 1):

@@ -24,7 +24,7 @@ _PAGE = 50          # máximo permitido por VTEX en una ventana _from/_to
 _MAX_PER_CAT = 2500  # tope duro de la API de búsqueda VTEX
 
 
-def discover_sections():
+def _discover_sections():
     """[(sección, [(subcategoría, cat_path), ...]), ...] desde el árbol VTEX.
 
     `cat_path` es la RUTA completa de categoría (ej. "1/10") porque el filtro
@@ -50,17 +50,26 @@ def _extract(p, seccion, subcat):
     listp = offer.get("ListPrice")
     sku = p.get("productReference") or it.get("itemId") or p.get("productId", "")
     link = p.get("linkText", "")
+    img = (it.get("images") or [{}])[0].get("imageUrl", "")
     return _b.make_row(
         tienda=RETAILER_NAME, seccion=seccion, subcat=subcat,
         marca=p.get("brand", ""), sku=sku,
         descripcion=p.get("productName", ""),
         precio_normal=listp, precio_internet=price,
-        url=f"{BASE}/{link}/p" if link else "",
+        url=f"{BASE}/{link}/p" if link else "", img=img,
     )
 
 
-def scrape_section(subcats, *, on_row=None, progress_cb=None, limit=None):
-    """subcats: [(sección, subcategoría, category_id), ...]. Devuelve filas."""
+def discover_sections(progress_cb=None):  # noqa: ARG001 (progress_cb por uniformidad)
+    return _discover_sections()
+
+
+def scrape_section(subcats, *, on_row=None, progress_cb=None, limit=None, zone=None):
+    """subcats: [(sección, subcategoría, category_id), ...]. Devuelve filas.
+
+    `zone` se ignora: PuntoMaestro tiene precio único nacional (verificado: la
+    región VTEX no cambia el precio del catálogo, solo despacho/stock).
+    """
     rows = []
     total = len(subcats)
     for idx, (seccion, subcat, cat_id) in enumerate(subcats, 1):
