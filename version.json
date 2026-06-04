@@ -1,6 +1,6 @@
 {
-  "version": "2.6.0",
+  "version": "2.7.0",
   "launcher_schema": "1.0",
   "architecture": "thin-launcher",
-  "notes": "Notebooks delgados (~3 celdas) + lógica en launchers/*.py. Updates via git pull automáticos. Si launcher_schema cambia, hay que reenviar el .ipynb a los usuarios. v2.6.0: nuevo Colab 'Competidores' (boot('competidores')) para inteligencia de precios de la competencia: engines de API comp_puntomaestro (VTEX), comp_ferrobal (WooCommerce), comp_imperial (Oracle Commerce Cloud) + delega Sodimac/Construmart en la Maestra de producción. Contrato uniforme engines/comp_base.py. v2.4.0: Ferni hub (boot('ferni')) → Buscador por SKU o Maestra Sección, ambos con variants[]."
+  "notes": "Notebooks delgados (~3 celdas) + lógica en launchers/*.py. Updates via git pull automáticos. Si launcher_schema cambia, hay que reenviar el .ipynb a los usuarios. v2.7.0: nuevo Colab 'PCFactory — Maestra Sección' (boot('pcfactory')): scraper de catálogo de pcfactory.cl por API REST pública (api.pcfactory.cl, JSON sin auth, sin DOM/Playwright, sin selector de zona — precio nacional). engines/pcf_base.py (helpers API + write_excel) + engines/pcf_seccion.py (discover_sections/scrape_section, paginación size=48 con roll-up por id). v2.6.0: nuevo Colab 'Competidores' (boot('competidores')) para inteligencia de precios de la competencia: engines de API comp_puntomaestro (VTEX), comp_ferrobal (WooCommerce), comp_imperial (Oracle Commerce Cloud) + delega Sodimac/Construmart en la Maestra de producción. Contrato uniforme engines/comp_base.py. v2.4.0: Ferni hub (boot('ferni')) → Buscador por SKU o Maestra Sección, ambos con variants[]."
 }

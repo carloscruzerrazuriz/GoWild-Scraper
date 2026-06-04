@@ -17,6 +17,7 @@ _TOOLS = {
     "mayoristas":   "launchers.mayoristas",
     "ferni":        "launchers.ferni",
     "competidores": "launchers.competidores",
+    "pcfactory":    "launchers.pcfactory",
 }
 
 

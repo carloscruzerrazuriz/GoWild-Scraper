@@ -29,10 +29,16 @@ GoWild-Scraper/
 │   ├── maestra_falabella.py
 │   ├── maestra_construmart.py
 │   ├── ferni_sodimac.py          ← motor puertas por SKU (variants[] del __NEXT_DATA__)
-│   └── ferni_maestra_sodimac.py  ← motor Maestra por categoría (reusa crawl + variants[])
+│   ├── ferni_maestra_sodimac.py  ← motor Maestra por categoría (reusa crawl + variants[])
+│   ├── pcf_base.py               ← PCFactory: helpers API (urllib) + write_excel
+│   └── pcf_seccion.py            ← PCFactory: Maestra Sección (API api.pcfactory.cl)
 │
 └── version.json      ← versión + launcher_schema
 ```
+
+Otras herramientas en el repo: **Competidores** (`boot("competidores")`, inteligencia de
+precios de la competencia) y **PCFactory** (`boot("pcfactory")`, catálogo de pcfactory.cl
+por API REST pública — sin DOM/Playwright ni selector de zona).
 
 ## Cómo funciona el auto-update
 
@@ -56,6 +62,8 @@ Pega estos links a tus usuarios — abren el `.ipynb` más reciente del repo:
   `https://colab.research.google.com/github/carloscruzerrazuriz/GoWild-Scraper/blob/main/notebooks/Precios_Mayoristas.ipynb`
 - 🚪 Ferni — Buscador de Puertas:
   `https://colab.research.google.com/github/carloscruzerrazuriz/GoWild-Scraper/blob/main/notebooks/Buscador_Puertas_Sodimac.ipynb`
+- 🖥️ PCFactory — Maestra Sección:
+  `https://colab.research.google.com/github/carloscruzerrazuriz/GoWild-Scraper/blob/main/notebooks/PCFactory_Seccion.ipynb`
 
 ## Para el mantenedor
 
