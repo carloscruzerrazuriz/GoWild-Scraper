@@ -31,14 +31,18 @@ GoWild-Scraper/
 │   ├── ferni_sodimac.py          ← motor puertas por SKU (variants[] del __NEXT_DATA__)
 │   ├── ferni_maestra_sodimac.py  ← motor Maestra por categoría (reusa crawl + variants[])
 │   ├── pcf_base.py               ← PCFactory: helpers API (urllib) + write_excel
-│   └── pcf_seccion.py            ← PCFactory: Maestra Sección (API api.pcfactory.cl)
+│   ├── pcf_seccion.py            ← PCFactory: Maestra Sección (API api.pcfactory.cl)
+│   └── pcf_detalle.py            ← PCFactory: Ficha Completa por SKU (multi-hoja)
 │
 └── version.json      ← versión + launcher_schema
 ```
 
 Otras herramientas en el repo: **Competidores** (`boot("competidores")`, inteligencia de
-precios de la competencia) y **PCFactory** (`boot("pcfactory")`, catálogo de pcfactory.cl
-por API REST pública — sin DOM/Playwright ni selector de zona).
+precios de la competencia) y **PCFactory** (`boot("pcfactory")`, **hub**: *Maestra Sección*
+o *Ficha Completa por SKU*, ambas por API REST pública de pcfactory.cl — sin DOM/Playwright
+ni selector de zona). La Ficha Completa, al estilo MK7, recibe una lista de SKU y entra al
+detalle de cada producto extrayendo todo (precios, stock por tienda, especificaciones,
+imágenes, video) en un Excel multi-hoja.
 
 ## Cómo funciona el auto-update
 
