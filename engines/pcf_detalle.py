@@ -32,20 +32,20 @@ RETAILER_NAME = "PCFactory"
 _CATALOGO = f"{base.API_BASE}/pcfactory-services-catalogo/v1/catalogo"
 _IFRAME_RE = re.compile(r'<iframe[^>]*src=["\']([^"\']+)', re.I)
 
-# ─── Columnas de cada hoja ───────────────────────────────────────────────────
+# ─── Columnas de cada hoja (EN INGLÉS — requerimiento del cliente) ───────────
 PRODUCTO_COLS = [
-    "Tienda", "SKU", "Desc. Carga", "Nombre", "Marca", "Part Number",
-    "Categoría", "Categoría 2", "Categoría 3",
-    "Precio Efectivo", "Precio Débito", "Precio Normal", "Precio Referencia",
-    "Precio BancoEstado", "% Descuento", "Promo Inicio", "Promo Término",
-    "Stock Total", "Stock Internet", "N° Tiendas c/Stock",
-    "Garantía (meses)", "Garantía Acuerdo", "Digital", "Mayorista",
-    "N° Imágenes", "Video", "Imagen Principal", "URL",
+    "Store", "SKU", "Upload Desc.", "Name", "Brand", "Part Number",
+    "Category", "Category 2", "Category 3",
+    "Transfer Price", "Debit Price", "Card Price", "Reference Price",
+    "BancoEstado Price", "Discount %", "Promo Start", "Promo End",
+    "Total Stock", "Internet Stock", "Stores w/ Stock",
+    "Warranty (months)", "Warranty Agreement", "Digital", "Wholesale",
+    "Images", "Video", "Main Image", "URL",
 ]
-SPEC_COLS = ["SKU", "Nombre", "Grupo", "Especificación", "Valor"]
-STOCK_COLS = ["SKU", "Nombre", "Zona", "Sucursal", "Cantidad",
-              "Retiro", "Despacho", "Cerrada"]
-IMG_COLS = ["SKU", "Nombre", "#", "URL"]
+SPEC_COLS = ["SKU", "Name", "Group", "Specification", "Value"]
+STOCK_COLS = ["SKU", "Name", "Zone", "Store", "Quantity",
+              "Pickup", "Shipping", "Closed"]
+IMG_COLS = ["SKU", "Name", "#", "URL"]
 
 
 def _f(x):
@@ -58,7 +58,7 @@ def _f(x):
 
 def _flag(x):
     """Normaliza booleanos que la API entrega como bool o como 'True'/'False'."""
-    return "Sí" if str(x) == "True" or x is True else ""
+    return "Yes" if str(x) == "True" or x is True else ""
 
 
 def _video_url(html):
@@ -130,10 +130,10 @@ def _build(pid, desc, data):
             if apr not in ("0", "None", ""):
                 n_with += 1
             stock_rows.append({
-                "SKU": pid, "Nombre": nombre, "Zona": zona,
-                "Sucursal": s.get("nombre", ""), "Cantidad": apr,
-                "Retiro": _flag(s.get("retiro")), "Despacho": _flag(s.get("despacho")),
-                "Cerrada": _flag(s.get("cerrada")),
+                "SKU": pid, "Name": nombre, "Zone": zona,
+                "Store": s.get("nombre", ""), "Quantity": apr,
+                "Pickup": _flag(s.get("retiro")), "Shipping": _flag(s.get("despacho")),
+                "Closed": _flag(s.get("cerrada")),
             })
 
     # Especificaciones (formato largo).
@@ -142,8 +142,8 @@ def _build(pid, desc, data):
         grupo = g.get("grupo", "")
         for it in g.get("detalle") or []:
             spec_rows.append({
-                "SKU": pid, "Nombre": nombre, "Grupo": grupo,
-                "Especificación": it.get("nombre", ""), "Valor": it.get("valor", ""),
+                "SKU": pid, "Name": nombre, "Group": grupo,
+                "Specification": it.get("nombre", ""), "Value": it.get("valor", ""),
             })
 
     # Imágenes (galería) + thumbnail para embeber.
@@ -152,7 +152,7 @@ def _build(pid, desc, data):
         u = _best_image(im.get("sizes"))
         if i == 0:
             main_img = u
-        img_rows.append({"SKU": pid, "Nombre": nombre, "#": i + 1, "URL": u})
+        img_rows.append({"SKU": pid, "Name": nombre, "#": i + 1, "URL": u})
     embed_img = ((imgs[0].get("sizes") or {}).get("200") or main_img) if imgs else ""
 
     gar = det.get("garantia") or {}
@@ -162,25 +162,25 @@ def _build(pid, desc, data):
         return c.get("nombre", "") if str(c.get("id")) not in ("None", "") else ""
 
     producto = {
-        "Tienda": "PCFactory", "SKU": pid, "Desc. Carga": desc or "",
-        "Nombre": nombre, "Marca": (det.get("marca") or {}).get("nombre", ""),
+        "Store": "PCFactory", "SKU": pid, "Upload Desc.": desc or "",
+        "Name": nombre, "Brand": (det.get("marca") or {}).get("nombre", ""),
         "Part Number": det.get("partNumber", "") or "",
-        "Categoría": _cat(det.get("categoria")),
-        "Categoría 2": _cat(det.get("categoria2")),
-        "Categoría 3": _cat(det.get("categoria3")),
-        "Precio Efectivo": efectivo, "Precio Débito": debito,
-        "Precio Normal": normal, "Precio Referencia": referencia,
-        "Precio BancoEstado": bancoestado,
-        "% Descuento": base.pct_discount(base_price, efectivo),
-        "Promo Inicio": (promo.get("inicio") or "")[:16] if promo.get("inicio") else "",
-        "Promo Término": (promo.get("termino") or "")[:16] if promo.get("termino") else "",
-        "Stock Total": (det.get("stock") or {}).get("aproximado", ""),
-        "Stock Internet": stock_internet, "N° Tiendas c/Stock": n_with,
-        "Garantía (meses)": gar.get("mesesDuracion", "") or "",
-        "Garantía Acuerdo": gar.get("acuerdo", "") or "",
-        "Digital": _flag(det.get("digital")), "Mayorista": _flag(det.get("mayorista")),
-        "N° Imágenes": len(imgs), "Video": _video_url(det.get("descripcion", "")),
-        "Imagen Principal": main_img, "URL": base.product_url(det.get("slug")),
+        "Category": _cat(det.get("categoria")),
+        "Category 2": _cat(det.get("categoria2")),
+        "Category 3": _cat(det.get("categoria3")),
+        "Transfer Price": efectivo, "Debit Price": debito,
+        "Card Price": normal, "Reference Price": referencia,
+        "BancoEstado Price": bancoestado,
+        "Discount %": base.pct_discount(base_price, efectivo),
+        "Promo Start": (promo.get("inicio") or "")[:16] if promo.get("inicio") else "",
+        "Promo End": (promo.get("termino") or "")[:16] if promo.get("termino") else "",
+        "Total Stock": (det.get("stock") or {}).get("aproximado", ""),
+        "Internet Stock": stock_internet, "Stores w/ Stock": n_with,
+        "Warranty (months)": gar.get("mesesDuracion", "") or "",
+        "Warranty Agreement": gar.get("acuerdo", "") or "",
+        "Digital": _flag(det.get("digital")), "Wholesale": _flag(det.get("mayorista")),
+        "Images": len(imgs), "Video": _video_url(det.get("descripcion", "")),
+        "Main Image": main_img, "URL": base.product_url(det.get("slug")),
         "_img": embed_img,
     }
     return {"producto": producto, "especificaciones": spec_rows,
@@ -245,27 +245,27 @@ def write_excel(data, path, *, with_images=False):
 
     wb = openpyxl.Workbook()
 
-    # Hoja 1 — Productos (1 fila por producto).
+    # Hoja 1 — Products (1 fila por producto).
     ws = wb.active
-    ws.title = "Productos"
-    cols = list(PRODUCTO_COLS) + (["Imagen"] if with_images else [])
+    ws.title = "Products"
+    cols = list(PRODUCTO_COLS) + (["Image"] if with_images else [])
     ws.append(cols)
     for r in data["productos"]:
         ws.append([r.get(c, "") for c in cols])
-    apply_clean_style(ws)
+    apply_clean_style(ws, skip_width=("URL", "Image", "Main Image"))
     if with_images:
         base._embed_images(ws, data["productos"], len(cols))
 
-    # Hojas largas — Especificaciones / Stock por tienda / Imágenes.
+    # Hojas largas — Specifications / Stock by store / Images.
     for title, sheet_cols, key in (
-        ("Especificaciones", SPEC_COLS, "especificaciones"),
-        ("Stock por tienda", STOCK_COLS, "stock"),
-        ("Imágenes", IMG_COLS, "imagenes"),
+        ("Specifications", SPEC_COLS, "especificaciones"),
+        ("Stock by store", STOCK_COLS, "stock"),
+        ("Images", IMG_COLS, "imagenes"),
     ):
         wsx = wb.create_sheet(title)
         wsx.append(sheet_cols)
         for r in data[key]:
             wsx.append([r.get(c, "") for c in sheet_cols])
-        apply_clean_style(wsx)
+        apply_clean_style(wsx, skip_width=("URL", "Image", "Main Image"))
 
     wb.save(path)

@@ -38,11 +38,14 @@ GoWild-Scraper/
 ```
 
 Otras herramientas en el repo: **Competidores** (`boot("competidores")`, inteligencia de
-precios de la competencia) y **PCFactory** (`boot("pcfactory")`, **hub**: *Maestra Sección*
-o *Ficha Completa por SKU*, ambas por API REST pública de pcfactory.cl — sin DOM/Playwright
-ni selector de zona). La Ficha Completa, al estilo MK7, recibe una lista de SKU y entra al
-detalle de cada producto extrayendo todo (precios, stock por tienda, especificaciones,
-imágenes, video) en un Excel multi-hoja.
+precios de la competencia) y **PCFactory** (`boot("pcfactory")`, **hub de 3 herramientas, UI
+EN INGLÉS** por requerimiento del cliente: *Section catalog*, *Full detail by SKU* y *Section
+→ Full detail*; todas por API REST pública de pcfactory.cl — sin DOM/Playwright ni selector
+de zona). *Full detail by SKU*, al estilo MK7, recibe una lista de SKU y entra al detalle de
+cada producto extrayendo todo (precios, stock por tienda, especificaciones, imágenes, video)
+en un Excel multi-hoja; *Section → Full detail* hace lo mismo pero sobre todos los productos
+de una sección (cuenta y pide confirmación primero). El Excel de PCFactory sale en inglés;
+los demás scrapers del repo siguen en español.
 
 ## Cómo funciona el auto-update
 

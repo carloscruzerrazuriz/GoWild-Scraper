@@ -1,14 +1,11 @@
 # Copyright (c) 2026 Carlos Cruz Errazuriz. All rights reserved.
 # Proprietary - see LICENSE file. No unauthorized use, redistribution, or reverse engineering.
-"""PCFactory — Ficha Completa por SKU (UI ipywidgets para Colab).
+"""PCFactory — Full detail by SKU (UI ipywidgets para Colab).
 
-Se llega desde el hub (`boot("pcfactory")` → "Ficha Completa por SKU"). Al estilo
-del MK7: el usuario sube un Excel con SKU (+ Desc. opcional) — o los pega — y la
-herramienta entra al detalle de cada producto vía API y extrae TODO: precios,
-stock por tienda, especificaciones, imágenes y video.
-
-Salida = workbook multi-hoja (Productos / Especificaciones / Stock por tienda /
-Imágenes). Ver engines/pcf_detalle.py.
+Se llega desde el hub (`boot("pcfactory")` → "Full detail by SKU"). Al estilo del
+MK7: el usuario sube un Excel con SKU (+ Desc. opcional) — o los pega — y la
+herramienta entra al detalle de cada producto vía API y extrae TODO. UI EN INGLÉS
+(requerimiento del cliente). Salida = workbook multi-hoja. Ver engines/pcf_detalle.
 """
 
 
@@ -58,10 +55,10 @@ def run():
     display(HTML("""
     <div style='background:linear-gradient(120deg,#1f5fbf,#3aa0e8);color:white;
     padding:1.1rem 1.5rem;border-radius:12px;margin-bottom:1rem;font-family:sans-serif;'>
-      <h2 style='margin:0;color:white;'>🔍 PCFactory — Ficha Completa por SKU</h2>
+      <h2 style='margin:0;color:white;'>🔍 PCFactory — Full detail by SKU</h2>
       <p style='margin:.3rem 0 0;color:rgba(255,255,255,.92);font-size:.92rem;'>
-        Subí (o pegá) una lista de SKU y extraigo <b>todo</b> de cada producto:
-        precios, stock por tienda, especificaciones, imágenes y video.
+        Upload (or paste) a SKU list and I'll pull <b>everything</b> for each product:
+        prices, stock by store, specifications, images and video.
       </p>
     </div>
     <style>
@@ -71,9 +68,9 @@ def run():
       vertical-align:-3px;margin-right:8px;}}
     </style>"""))
 
-    # ─── Parseo de entrada ───────────────────────────────────────────────────
+    # ─── Parseo de entrada (acepta cabeceras en inglés o español) ────────────
     def _parse_pasted(text):
-        """SKUs pegados (separados por coma / espacio / línea) → [(sku, ''), ...]."""
+        """SKUs pegados (coma / espacio / línea) → [(sku, ''), ...]."""
         import re
         toks = [t for t in re.split(r"[\s,;]+", text or "") if t.strip()]
         return [(t.strip(), "") for t in toks]
@@ -91,7 +88,7 @@ def run():
             return None
         sku_col = (_find(["sku pcfactory", "sku", "codigo", "código", "id"])
                    or (df.columns[0] if len(df.columns) else None))
-        desc_col = _find(["desc", "nombre", "producto"])
+        desc_col = _find(["desc", "name", "nombre", "producto", "product"])
         out = []
         if sku_col is None:
             return out
@@ -107,15 +104,15 @@ def run():
         return out
 
     upload = widgets.FileUpload(accept=".xlsx", multiple=False,
-                               description="Subir Excel de SKUs")
+                               description="Upload SKU Excel")
     paste = widgets.Textarea(
-        placeholder="…o pegá los SKU acá (separados por coma, espacio o salto de línea). Ej: 55320, 56743, 27776",
+        placeholder="…or paste the SKUs here (comma, space or newline separated). e.g. 55320, 56743, 27776",
         layout=widgets.Layout(width="660px", height="80px"))
     parse_status = widgets.HTML()
 
     def _gather_skus():
         skus = []
-        # 1) Excel subido
+        # 1) Uploaded Excel
         try:
             up = upload.value
             content = None
@@ -130,9 +127,9 @@ def run():
             if content:
                 skus += _parse_xlsx(content)
         except Exception as e:
-            parse_status.value = (f"<span style='color:#c0392b'>⚠️ No pude leer el "
+            parse_status.value = (f"<span style='color:#c0392b'>⚠️ Couldn't read the "
                                   f"Excel: {e}</span>")
-        # 2) Pegados
+        # 2) Pasted
         skus += _parse_pasted(paste.value)
         return skus
 
@@ -142,8 +139,8 @@ def run():
         n = len({str(s).strip() for s, _ in skus if str(s).strip()})
         if n:
             parse_status.value = (f"<div style='background:#eaf3fc;border:1px solid #aacdf0;"
-                                  f"padding:.5rem;border-radius:6px;'>📋 <b>{n}</b> SKU únicos "
-                                  f"detectados.</div>")
+                                  f"padding:.5rem;border-radius:6px;'>📋 <b>{n}</b> unique SKUs "
+                                  f"detected.</div>")
             run_btn.disabled = False
         else:
             parse_status.value = ""
@@ -151,17 +148,17 @@ def run():
     upload.observe(_refresh_count, "value")
     paste.observe(_refresh_count, "value")
 
-    # ─── Opciones ────────────────────────────────────────────────────────────
+    # ─── Options ─────────────────────────────────────────────────────────────
     img_toggle = widgets.Checkbox(
         value=False, indent=False,
-        description="Embeber imagen principal en el Excel (más pesado y lento)",
+        description="Embed main image in the Excel (heavier and slower)",
         layout=widgets.Layout(width="auto"))
 
-    # ─── Ejecutar ────────────────────────────────────────────────────────────
-    run_btn = widgets.Button(description="🚀 Extraer fichas", button_style="success",
+    # ─── Run ─────────────────────────────────────────────────────────────────
+    run_btn = widgets.Button(description="🚀 Extract details", button_style="success",
                              disabled=True, layout=widgets.Layout(width="230px"))
     banner = widgets.HTML()
-    bar = widgets.IntProgress(min=0, max=100, value=0, description="Productos:",
+    bar = widgets.IntProgress(min=0, max=100, value=0, description="Products:",
                               bar_style="info", layout=widgets.Layout(width="540px"),
                               style={"description_width": "initial"})
     bar_pct = widgets.HTML(layout=widgets.Layout(width="180px"))
@@ -173,14 +170,14 @@ def run():
         if e == "product":
             bar.max = ev.get("total", 1) or 1
             bar.value = min(ev.get("done", 0), bar.max)
-            bar.description = f"Productos {bar.value}/{bar.max}"
+            bar.description = f"Products {bar.value}/{bar.max}"
             mark = "✓" if ev.get("ok") else "✗"
             bar_pct.value = (f"<span style='color:#555;font-size:.9em;margin-left:8px;'>"
                              f"{bar.value}/{bar.max} · "
                              f"{int(round(100*bar.value/max(1,bar.max)))}%</span>")
             live.value = (f"<span class='pcfd-spinner'></span>{mark} SKU {ev.get('sku','')}…")
         elif e == "complete":
-            live.value = "<span style='color:#27ae60'>✓ Extracción completada.</span>"
+            live.value = "<span style='color:#27ae60'>✓ Extraction completed.</span>"
 
     def _start(_b):
         if state["running"]:
@@ -192,7 +189,7 @@ def run():
         run_btn.layout.display = "none"
         banner.value = ("<div style='background:linear-gradient(90deg,#ffb84d,#f0a020);"
                         "color:#3a2400;padding:.7rem 1rem;border-radius:8px;font-weight:600;'>"
-                        "<span class='pcfd-spinner'></span>Trabajando — no cierres la celda</div>")
+                        "<span class='pcfd-spinner'></span>Working — don't close the cell</div>")
         with result_out:
             clear_output()
         bar.value = 0
@@ -203,22 +200,22 @@ def run():
             data = eng.scrape_skus(skus, progress_cb=_progress)
             if with_images:
                 with result_out:
-                    display(HTML("<span class='pcfd-spinner'></span>Descargando y embebiendo "
-                                 "imágenes… (puede tardar)"))
-            out = OUTPUT_DIR / f"PCFactory_Fichas_{ts}.xlsx"
+                    display(HTML("<span class='pcfd-spinner'></span>Downloading and embedding "
+                                 "images… (may take a while)"))
+            out = OUTPUT_DIR / f"PCFactory_Details_{ts}.xlsx"
             eng.write_excel(data, str(out), with_images=with_images)
             state["output_path"] = out
             nf = data.get("notfound") or []
             nf_html = ""
             if nf:
-                nf_html = (f"<br>⚠️ No encontrados ({len(nf)}): "
+                nf_html = (f"<br>⚠️ Not found ({len(nf)}): "
                            f"<code>{', '.join(map(str, nf[:30]))}</code>")
             with result_out:
                 display(HTML(
                     f"<div style='background:#e8f5e9;border:1px solid #66bb6a;padding:.9rem;"
-                    f"border-radius:8px;'>✅ <b>Listo.</b> {len(data['productos'])} productos · "
-                    f"{len(data['especificaciones'])} specs · {len(data['stock'])} filas de stock · "
-                    f"{len(data['imagenes'])} imágenes.<br>📄 Archivo: <code>{out.name}</code>"
+                    f"border-radius:8px;'>✅ <b>Done.</b> {len(data['productos'])} products · "
+                    f"{len(data['especificaciones'])} specs · {len(data['stock'])} stock rows · "
+                    f"{len(data['imagenes'])} images.<br>📄 File: <code>{out.name}</code>"
                     f"{nf_html}</div>"))
             _log_activity(n_skus=len(skus), n_rows_output=len(data["productos"]),
                           runtime_s=int(_time.time() - t0), output_file=out.name)
@@ -227,7 +224,7 @@ def run():
                     colab_files.download(str(out))
                 except Exception:
                     pass
-                redl = widgets.Button(description="Descargar Excel de nuevo", icon="download",
+                redl = widgets.Button(description="Download Excel again", icon="download",
                                       button_style="info", layout=widgets.Layout(width="260px"))
                 redl.on_click(lambda _x: colab_files.download(str(out)))
                 with result_out:
@@ -251,15 +248,15 @@ def run():
         "All rights reserved · Proprietary — No unauthorized use or distribution</span></div>")
 
     step1 = widgets.VBox([
-        widgets.HTML("<h4 style='margin:.3rem 0;'>📂 Paso 1 — Lista de SKU</h4>"),
-        widgets.HTML("<span style='font-size:.9em;color:#555;'>Subí un Excel con una "
-                     "columna de SKU (y opcional Desc.), o pegá los SKU abajo.</span>"),
+        widgets.HTML("<h4 style='margin:.3rem 0;'>📂 Step 1 — SKU list</h4>"),
+        widgets.HTML("<span style='font-size:.9em;color:#555;'>Upload an Excel with a "
+                     "SKU column (and optional Description), or paste the SKUs below.</span>"),
         upload, paste, parse_status])
     options_box = widgets.VBox([
-        widgets.HTML("<h4 style='margin:.6rem 0 .3rem;'>⚙️ Opciones</h4>"), img_toggle])
+        widgets.HTML("<h4 style='margin:.6rem 0 .3rem;'>⚙️ Options</h4>"), img_toggle])
     step2 = widgets.VBox([
         options_box,
-        widgets.HTML("<h4 style='margin:.6rem 0 .3rem;'>🚀 Paso 2 — Ejecutar</h4>"),
+        widgets.HTML("<h4 style='margin:.6rem 0 .3rem;'>🚀 Step 2 — Run</h4>"),
         run_btn, banner,
         widgets.HBox([bar, bar_pct], layout=widgets.Layout(align_items="center")),
         live, result_out])

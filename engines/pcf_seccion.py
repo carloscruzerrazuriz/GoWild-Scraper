@@ -118,4 +118,4 @@ def scrape_section(subcats, *, on_row=None, progress_cb=None, limit=None, zone=N
 
 def write_excel(rows, path, *, with_images=False):
     """Escribe el Excel (delegado a pcf_base con las columnas de Sección)."""
-    base.write_excel(rows, path, sheet_name="Datos", with_images=with_images)
+    base.write_excel(rows, path, sheet_name="Data", with_images=with_images)

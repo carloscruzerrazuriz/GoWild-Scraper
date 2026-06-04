@@ -42,11 +42,11 @@ MENU_URL = f"{API_BASE}/api-dex-catalog/v1/catalog/category/PCF/menu"
 QUERY_URL = f"{API_BASE}/pcfactory-services-catalogo/v1/catalogo/productos/query"
 PAGE_SIZE = 48
 
-# Columnas unificadas de salida (estilo Maestra Sección del proyecto).
+# Columnas de salida EN INGLÉS (el cliente del Colab PCFactory lo requiere así).
 OUTPUT_COLS = [
-    "Tienda", "Sección", "Subcategoría", "Marca", "SKU", "Part Number",
-    "Descripción Producto", "Precio Efectivo", "Precio Normal",
-    "Precio Referencia", "% Descuento", "Stock", "Promoción", "URL",
+    "Store", "Section", "Subcategory", "Brand", "SKU", "Part Number",
+    "Product Name", "Transfer Price", "Card Price",
+    "Reference Price", "Discount %", "Stock", "On Sale", "URL",
 ]
 
 _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -124,19 +124,19 @@ def make_row(item, *, seccion="", subcat=""):
     referencia = precio.get("referencia")
     base = referencia if (referencia and referencia not in (0, "0")) else normal
     return {
-        "Tienda": "PCFactory",
-        "Sección": seccion,
-        "Subcategoría": subcat or (item.get("categoria") or {}).get("nombre", ""),
-        "Marca": item.get("marca") or "",
+        "Store": "PCFactory",
+        "Section": seccion,
+        "Subcategory": subcat or (item.get("categoria") or {}).get("nombre", ""),
+        "Brand": item.get("marca") or "",
         "SKU": item.get("id") or "",
-        "Part Number": "",  # sólo disponible en el detalle (pcf_detalle, futuro)
-        "Descripción Producto": item.get("nombre") or "",
-        "Precio Efectivo": efectivo if efectivo not in (None, "") else "",
-        "Precio Normal": normal if normal not in (None, "") else "",
-        "Precio Referencia": referencia if referencia not in (None, "") else "",
-        "% Descuento": pct_discount(base, efectivo),
+        "Part Number": "",  # sólo disponible en el detalle (pcf_detalle)
+        "Product Name": item.get("nombre") or "",
+        "Transfer Price": efectivo if efectivo not in (None, "") else "",
+        "Card Price": normal if normal not in (None, "") else "",
+        "Reference Price": referencia if referencia not in (None, "") else "",
+        "Discount %": pct_discount(base, efectivo),
         "Stock": item.get("stock") or "",
-        "Promoción": "Sí" if precio.get("promocion") else "",
+        "On Sale": "Yes" if precio.get("promocion") else "",
         "URL": product_url(item.get("slug")),
         "_img": image_url(item.get("thumbnail")),
     }
@@ -207,25 +207,26 @@ def _embed_images(ws, rows, img_col_idx, *, cell_px=90, max_images=2000):
             continue
 
 
-def write_excel(rows, path, *, sheet_name="Datos", columns=None, with_images=False):
+def write_excel(rows, path, *, sheet_name="Data", columns=None, with_images=False):
     """Escribe las rows a un .xlsx con la estética unificada del proyecto.
 
-    Usa openpyxl directo (sin pandas). `Imagen` siempre es la última columna
-    (convención del proyecto) y sólo se agrega si `with_images=True`.
+    Usa openpyxl directo (sin pandas). `Image` siempre es la última columna
+    (convención del proyecto) y sólo se agrega si `with_images=True`. Las
+    cabeceras van en inglés (cliente del Colab PCFactory).
     """
     import openpyxl
     from engines._excel_utils import apply_clean_style
 
     cols = list(columns or OUTPUT_COLS)
     if with_images:
-        cols = cols + ["Imagen"]
+        cols = cols + ["Image"]
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = sheet_name
     ws.append(cols)
     for r in rows:
-        ws.append([r.get(c, "") for c in cols])  # "Imagen" queda vacía; se embebe luego
-    apply_clean_style(ws)
+        ws.append([r.get(c, "") for c in cols])  # "Image" queda vacía; se embebe luego
+    apply_clean_style(ws, skip_width=("URL", "Image", "Main Image"))
     if with_images:
         _embed_images(ws, rows, len(cols))  # última columna = Imagen
     wb.save(path)
