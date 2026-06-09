@@ -10,6 +10,15 @@ Trade-off vs MK7/Maestra de producción: NO trae Precio CMR/Mayorista/Congelados
 ni fotos (sólo del DOM). A cambio es bastante más rápido.
 """
 
+_SPIN_CSS = """
+<style>
+@keyframes sf-spin { to { transform: rotate(360deg); } }
+.sf-spin{display:inline-block;width:13px;height:13px;border:2px solid #fa6900;
+  border-top-color:transparent;border-radius:50%;animation:sf-spin .8s linear infinite;
+  vertical-align:-2px;margin-right:7px;}
+</style>
+"""
+
 
 def run():
     import nest_asyncio
@@ -48,6 +57,28 @@ def run():
 
 
 # ─── Helpers compartidos ─────────────────────────────────────────────────────
+def _fmt_elapsed(secs):
+    secs = int(secs)
+    return f"{secs}s" if secs < 60 else f"{secs // 60}m {secs % 60:02d}s"
+
+
+def _running_banner(widgets):
+    return widgets.HTML("<div style='background:linear-gradient(90deg,#ffb84d,#f0a020);"
+                        "color:#3a2400;padding:.6rem 1rem;border-radius:8px;font-weight:600;"
+                        "font-family:sans-serif;'><span class='sf-spin'></span>"
+                        "Trabajando — no cierres la celda</div>")
+
+
+def _metrics_html(n_rows, elapsed, extra=""):
+    rate = (n_rows / elapsed * 60) if elapsed > 0 else 0
+    return (f"<div style='display:flex;gap:1.2rem;flex-wrap:wrap;background:#fff8ef;"
+            f"border:1px solid #f0c890;padding:.55rem .8rem;border-radius:8px;"
+            f"font-family:sans-serif;font-size:.95rem;'>"
+            f"<span>📦 <b>{n_rows}</b> filas</span>"
+            f"<span>⏱ {_fmt_elapsed(elapsed)}</span>"
+            f"<span>⚡ {rate:.0f} filas/min</span>{extra}</div>")
+
+
 def _zone_picker(widgets):
     """Panel de selección de zonas (Cerrillos pre-marcada). Devuelve (box, getter)."""
     from engines import sodimac_fast as eng
@@ -122,7 +153,7 @@ def _run_sku():
         IN_COLAB = False
 
     OUTPUT_DIR = Path.cwd()
-    display(HTML("<h3 style='font-family:sans-serif'>⚡🔍 Sodimac Fast — Buscador por SKU</h3>"))
+    display(HTML(_SPIN_CSS + "<h3 style='font-family:sans-serif'>⚡🔍 Sodimac Fast — Buscador por SKU</h3>"))
     upload = widgets.FileUpload(accept=".xlsx", multiple=False, description="Subir Excel SKUs")
     paste = widgets.Textarea(placeholder="…o pegá SKU Sodimac separados por coma/espacio/línea",
                              layout=widgets.Layout(width="560px", height="70px"))
@@ -130,10 +161,21 @@ def _run_sku():
     zbox, get_zones = _zone_picker(widgets)
     run_btn = widgets.Button(description="🚀 Buscar", button_style="warning",
                              layout=widgets.Layout(width="200px"))
-    bar = widgets.IntProgress(min=0, max=100, description="Zona:", layout=widgets.Layout(width="480px"),
-                              style={"description_width": "initial"})
-    live = widgets.HTML(); out = widgets.Output()
-    state = {"running": False}
+
+    # ── Panel de progreso en vivo ──
+    banner = widgets.HTML()
+    zone_bar = widgets.IntProgress(min=0, max=100, value=0, description="Zonas:",
+                                   bar_style="warning", layout=widgets.Layout(width="520px"),
+                                   style={"description_width": "initial"})
+    zone_pct = widgets.HTML(layout=widgets.Layout(width="150px"))
+    batch_bar = widgets.IntProgress(min=0, max=100, value=0, description="Batches:",
+                                    bar_style="info", layout=widgets.Layout(width="520px"),
+                                    style={"description_width": "initial"})
+    batch_pct = widgets.HTML(layout=widgets.Layout(width="150px"))
+    metrics = widgets.HTML()
+    live = widgets.HTML()
+    out = widgets.Output()
+    state = {"running": False, "rows": [], "zi": 0}
 
     def _parse():
         skus, easy, desc = [], {}, {}
@@ -147,7 +189,7 @@ def _run_sku():
                 df = pd.read_excel(io.BytesIO(content), dtype=str)
                 low = {str(c).lower().strip(): c for c in df.columns}
                 sc = next((low[k] for k in low if "sodimac" in k), None) or \
-                     next((low[k] for k in low if k.strip() in ("sku", "sku producto")), None)
+                    next((low[k] for k in low if k.strip() in ("sku", "sku producto")), None)
                 ec = next((low[k] for k in low if "easy" in k), None)
                 dc = next((low[k] for k in low if "desc" in k), None)
                 if sc:
@@ -167,14 +209,16 @@ def _run_sku():
         seen, ded = set(), []
         for s in skus:
             if s not in seen:
-                seen.add(s); ded.append(s)
+                seen.add(s)
+                ded.append(s)
         return ded, easy, desc
 
     def _refresh(*_):
         skus, _e, _d = _parse()
         status.value = (f"<div style='background:#fff4e0;border:1px solid #f0a020;padding:.4rem;"
-                        f"border-radius:6px;'>{len(skus)} SKU únicos</div>" if skus else "")
-    upload.observe(_refresh, "value"); paste.observe(_refresh, "value")
+                        f"border-radius:6px;'>📋 {len(skus)} SKU únicos</div>" if skus else "")
+    upload.observe(_refresh, "value")
+    paste.observe(_refresh, "value")
 
     def _start(_b):
         if state["running"]:
@@ -183,55 +227,92 @@ def _run_sku():
         zones = get_zones()
         if not skus or not zones:
             with out:
-                clear_output(); print("⚠️ Falta SKUs o zonas.")
+                clear_output()
+                print("⚠️ Falta SKUs o zonas.")
             return
-        state["running"] = True
-        run_btn.disabled = True
-        bar.max = len(zones); bar.value = 0
+        state.update(running=True, rows=[], zi=0)
+        run_btn.layout.display = "none"
+        banner.value = _running_banner(widgets).value
+        zone_bar.max = len(zones)
+        zone_bar.value = 0
+        zone_bar.description = f"Zonas 0/{len(zones)}"
+        batch_bar.value = 0
         with out:
             clear_output()
         t0 = _time.time()
 
         def _cb(ev):
-            if ev["event"] == "zone_start":
-                live.value = f"<span style='color:#fa6900'>⏳ {ev['store']['name']} (handshake)…</span>"
-            elif ev["event"] == "batch_done":
-                live.value = f"🔎 {ev['store']['name']} · batch {ev['batch']}/{ev['total_batches']} · {ev['found_in_batch']} encontrados"
-            elif ev["event"] == "zone_done":
-                bar.value = min(bar.value + 1, bar.max)
+            e = ev["event"]
+            if e == "zone_start":
+                state["zi"] += 1
+                batch_bar.value = 0
+                live.value = (f"<span class='sf-spin'></span>🗺️ Zona {state['zi']}/{len(zones)}: "
+                              f"<b>{ev['store']['name']}</b> — fijando zona (handshake)…")
+                metrics.value = _metrics_html(len(state["rows"]), _time.time() - t0)
+            elif e == "batch_done":
+                batch_bar.max = ev["total_batches"]
+                batch_bar.value = ev["batch"]
+                batch_bar.description = f"Batches {ev['batch']}/{ev['total_batches']}"
+                batch_pct.value = (f"<span style='color:#555;font-size:.9em'>"
+                                   f"{int(100*ev['batch']/max(1,ev['total_batches']))}%</span>")
+                live.value = (f"<span class='sf-spin'></span>🔎 {ev['store']['name']} · "
+                              f"batch {ev['batch']}/{ev['total_batches']} · +{ev['found_in_batch']} encontrados")
+                metrics.value = _metrics_html(len(state["rows"]), _time.time() - t0)
+            elif e == "zone_done":
+                zone_bar.value = min(zone_bar.value + 1, zone_bar.max)
+                zone_bar.description = f"Zonas {zone_bar.value}/{zone_bar.max}"
+                zone_pct.value = (f"<span style='color:#555;font-size:.9em'>"
+                                  f"{int(100*zone_bar.value/max(1,zone_bar.max))}%</span>")
                 if ev.get("zone_failed"):
-                    live.value = f"<span style='color:#c0392b'>✗ {ev['store']['name']}: set_zone falló</span>"
+                    live.value = (f"<span style='color:#c0392b'>✗ {ev['store']['name']}: "
+                                  f"no se pudo fijar la zona (saltada)</span>")
+                metrics.value = _metrics_html(len(state["rows"]), _time.time() - t0)
 
         try:
-            rows = asyncio.run(eng.search_skus(skus, zones, easy_map=easy, desc_map=desc, progress_cb=_cb))
+            rows = asyncio.run(eng.search_skus(
+                skus, zones, easy_map=easy, desc_map=desc, progress_cb=_cb,
+                on_row=lambda r: state["rows"].append(r)))
             ts = datetime.now().strftime("%Y-%m-%d_%H%M")
             outp = OUTPUT_DIR / f"SodimacFast_SKU_{ts}.xlsx"
             eng.write_excel(rows, str(outp))
+            el = _time.time() - t0
+            metrics.value = _metrics_html(len(rows), el)
+            live.value = "<span style='color:#27ae60'>✓ Listo.</span>"
             with out:
                 display(HTML(f"<div style='background:#e8f5e9;border:1px solid #66bb6a;padding:.8rem;"
-                             f"border-radius:8px;'>✅ {len(rows)} filas en {_time.time()-t0:.0f}s · "
+                             f"border-radius:8px;'>✅ <b>{len(rows)}</b> filas en {_fmt_elapsed(el)} · "
                              f"<code>{outp.name}</code></div>"))
-            _telemetry("sku", len(rows), _time.time()-t0, outp.name)
+            _telemetry("sku", len(rows), el, outp.name)
             if IN_COLAB:
                 try:
                     colab_files.download(str(outp))
                 except Exception:
                     pass
+                redl = widgets.Button(description="Descargar Excel de nuevo", icon="download",
+                                      button_style="info", layout=widgets.Layout(width="260px"))
+                redl.on_click(lambda _x: colab_files.download(str(outp)))
+                with out:
+                    display(redl)
         except Exception as e:
             with out:
                 display(HTML(f"<div style='background:#ffe4e4;border:1px solid #c0392b;padding:.8rem;"
                              f"border-radius:8px;'>❌ {e}</div>"))
-                import traceback; traceback.print_exc()
+                import traceback
+                traceback.print_exc()
         finally:
-            state["running"] = False; run_btn.disabled = False
-            live.value = "<span style='color:#27ae60'>✓ Listo.</span>"
+            state["running"] = False
+            banner.value = ""
+            run_btn.layout.display = ""
     run_btn.on_click(_start)
 
     display(widgets.VBox([
         widgets.HTML("<b>1) SKUs</b> (formato MK7: columna <code>SKU Sodimac</code> + opcional SKU Easy / Desc.)"),
         upload, paste, status,
         widgets.HTML("<b>2) Zonas</b>"), zbox,
-        widgets.HTML("<b>3) Ejecutar</b>"), run_btn, bar, live, out, _watermark(widgets)]))
+        widgets.HTML("<b>3) Ejecutar</b>"), run_btn, banner,
+        widgets.HBox([zone_bar, zone_pct], layout=widgets.Layout(align_items="center")),
+        widgets.HBox([batch_bar, batch_pct], layout=widgets.Layout(align_items="center")),
+        metrics, live, out, _watermark(widgets)]))
 
 
 # ─── Modo 2: Maestra Sección ─────────────────────────────────────────────────
@@ -250,7 +331,7 @@ def _run_seccion():
         IN_COLAB = False
 
     OUTPUT_DIR = Path.cwd()
-    display(HTML("<h3 style='font-family:sans-serif'>⚡🗂️ Sodimac Fast — Maestra Sección</h3>"))
+    display(HTML(_SPIN_CSS + "<h3 style='font-family:sans-serif'>⚡🗂️ Sodimac Fast — Maestra Sección</h3>"))
     load_btn = widgets.Button(description="🔍 Cargar secciones", button_style="info",
                               layout=widgets.Layout(width="220px"))
     load_st = widgets.Output()
@@ -260,10 +341,21 @@ def _run_seccion():
     zbox, get_zones = _zone_picker(widgets)
     run_btn = widgets.Button(description="🚀 Recorrer", button_style="warning",
                              disabled=True, layout=widgets.Layout(width="200px"))
-    bar = widgets.IntProgress(min=0, max=100, description="Zona:", layout=widgets.Layout(width="480px"),
-                              style={"description_width": "initial"})
-    live = widgets.HTML(); out = widgets.Output()
-    state = {"sections": None, "running": False, "get_subs": (lambda: [])}
+
+    # ── Panel de progreso en vivo ──
+    banner = widgets.HTML()
+    zone_bar = widgets.IntProgress(min=0, max=100, value=0, description="Zonas:",
+                                   bar_style="warning", layout=widgets.Layout(width="520px"),
+                                   style={"description_width": "initial"})
+    zone_pct = widgets.HTML(layout=widgets.Layout(width="150px"))
+    sub_bar = widgets.IntProgress(min=0, max=100, value=0, description="Subcat:",
+                                  bar_style="info", layout=widgets.Layout(width="520px"),
+                                  style={"description_width": "initial"})
+    sub_pct = widgets.HTML(layout=widgets.Layout(width="160px"))
+    metrics = widgets.HTML()
+    live = widgets.HTML()
+    out = widgets.Output()
+    state = {"sections": None, "running": False, "get_subs": (lambda: []), "rows": [], "zi": 0}
 
     def _subpanel(subs, sec_name):
         boxes = []
@@ -293,33 +385,46 @@ def _run_seccion():
     def _load(_b=None):
         load_btn.disabled = True
         with load_st:
-            clear_output(); display(HTML("⏳ Cargando árbol de secciones (navegador, una vez)…"))
+            clear_output()
+            display(HTML("<span class='sf-spin'></span>Cargando árbol de secciones (navegador, una vez)…"))
         try:
             secs = asyncio.run(eng.discover_sections())
         except Exception as e:
             with load_st:
-                clear_output(); print(f"❌ {e}")
-            load_btn.disabled = False; return
+                clear_output()
+                print(f"❌ {e}")
+            load_btn.disabled = False
+            return
         state["sections"] = secs
         sec_dd.options = [(f"{n}  ·  {len(s)} subcat.", s) for n, s in secs if s]
         sec_dd.layout.display = ""
         if sec_dd.options:
             sec_dd.value = sec_dd.options[0][1]
         with load_st:
-            clear_output(); print(f"✓ {len(secs)} secciones.")
-        load_btn.disabled = False; _on_sec()
+            clear_output()
+            print(f"✓ {len(secs)} secciones.")
+        load_btn.disabled = False
+        _on_sec()
     load_btn.on_click(_load)
 
     def _start(_b):
         if state["running"]:
             return
-        subs = state["get_subs"](); zones = get_zones()
+        subs = state["get_subs"]()
+        zones = get_zones()
         if not subs or not zones:
             with out:
-                clear_output(); print("⚠️ Falta subcategorías o zonas.")
+                clear_output()
+                print("⚠️ Falta subcategorías o zonas.")
             return
-        state["running"] = True; run_btn.disabled = True
-        bar.max = len(zones); bar.value = 0
+        state.update(running=True, rows=[], zi=0)
+        run_btn.layout.display = "none"
+        banner.value = _running_banner(widgets).value
+        zone_bar.max = len(zones)
+        zone_bar.value = 0
+        zone_bar.description = f"Zonas 0/{len(zones)}"
+        sub_bar.max = len(subs)
+        sub_bar.value = 0
         with out:
             clear_output()
         t0 = _time.time()
@@ -327,37 +432,75 @@ def _run_seccion():
         def _cb(ev):
             e = ev["event"]
             if e == "zone_start":
-                live.value = f"<span style='color:#fa6900'>⏳ {ev['store']['name']} (handshake)…</span>"
+                state["zi"] += 1
+                sub_bar.value = 0
+                live.value = (f"<span class='sf-spin'></span>🗺️ Zona {state['zi']}/{len(zones)}: "
+                              f"<b>{ev['store']['name']}</b> — fijando zona (handshake)…")
+                metrics.value = _metrics_html(len(state["rows"]), _time.time() - t0)
+            elif e == "subcat_start":
+                sub_bar.max = ev["total"]
+                live.value = (f"<span class='sf-spin'></span>🗂️ {ev['store']['name']} › "
+                              f"<b>{ev['subcat']}</b> ({ev['idx']}/{ev['total']})")
             elif e == "subcat_page":
-                live.value = f"🗂️ {ev['store']['name']} · {ev['subcat']} · pág {ev['page']} (+{ev['n_new']})"
+                live.value = (f"<span class='sf-spin'></span>🗂️ {ev['store']['name']} › "
+                              f"{ev['subcat']} · pág {ev['page']} (+{ev['n_new']} SKU)")
+                metrics.value = _metrics_html(len(state["rows"]), _time.time() - t0)
+            elif e == "subcat_done":
+                sub_bar.value = min(ev["idx"], sub_bar.max)
+                sub_bar.description = f"Subcat {sub_bar.value}/{sub_bar.max}"
+                sub_pct.value = (f"<span style='color:#555;font-size:.9em'>"
+                                 f"{int(100*sub_bar.value/max(1,sub_bar.max))}%</span>")
+                metrics.value = _metrics_html(len(state["rows"]), _time.time() - t0)
             elif e == "zone_done":
-                bar.value = min(bar.value + 1, bar.max)
+                zone_bar.value = min(zone_bar.value + 1, zone_bar.max)
+                zone_bar.description = f"Zonas {zone_bar.value}/{zone_bar.max}"
+                zone_pct.value = (f"<span style='color:#555;font-size:.9em'>"
+                                  f"{int(100*zone_bar.value/max(1,zone_bar.max))}%</span>")
+                if ev.get("zone_failed"):
+                    live.value = (f"<span style='color:#c0392b'>✗ {ev['store']['name']}: "
+                                  f"no se pudo fijar la zona (saltada)</span>")
+                metrics.value = _metrics_html(len(state["rows"]), _time.time() - t0)
+
         try:
-            rows = asyncio.run(eng.scrape_sections(subs, zones, progress_cb=_cb))
+            rows = asyncio.run(eng.scrape_sections(
+                subs, zones, progress_cb=_cb, on_row=lambda r: state["rows"].append(r)))
             ts = datetime.now().strftime("%Y-%m-%d_%H%M")
             outp = OUTPUT_DIR / f"SodimacFast_Seccion_{ts}.xlsx"
             eng.write_excel(rows, str(outp))
+            el = _time.time() - t0
+            metrics.value = _metrics_html(len(rows), el)
+            live.value = "<span style='color:#27ae60'>✓ Listo.</span>"
             with out:
                 display(HTML(f"<div style='background:#e8f5e9;border:1px solid #66bb6a;padding:.8rem;"
-                             f"border-radius:8px;'>✅ {len(rows)} filas en {_time.time()-t0:.0f}s · "
+                             f"border-radius:8px;'>✅ <b>{len(rows)}</b> filas en {_fmt_elapsed(el)} · "
                              f"<code>{outp.name}</code></div>"))
-            _telemetry("seccion", len(rows), _time.time()-t0, outp.name)
+            _telemetry("seccion", len(rows), el, outp.name)
             if IN_COLAB:
                 try:
                     colab_files.download(str(outp))
                 except Exception:
                     pass
+                redl = widgets.Button(description="Descargar Excel de nuevo", icon="download",
+                                      button_style="info", layout=widgets.Layout(width="260px"))
+                redl.on_click(lambda _x: colab_files.download(str(outp)))
+                with out:
+                    display(redl)
         except Exception as e:
             with out:
                 display(HTML(f"<div style='background:#ffe4e4;border:1px solid #c0392b;padding:.8rem;"
                              f"border-radius:8px;'>❌ {e}</div>"))
-                import traceback; traceback.print_exc()
+                import traceback
+                traceback.print_exc()
         finally:
-            state["running"] = False; run_btn.disabled = False
-            live.value = "<span style='color:#27ae60'>✓ Listo.</span>"
+            state["running"] = False
+            banner.value = ""
+            run_btn.layout.display = ""
     run_btn.on_click(_start)
 
     display(widgets.VBox([
         widgets.HTML("<b>1) Secciones</b>"), load_btn, load_st, sec_dd, sub_box,
         widgets.HTML("<b>2) Zonas</b>"), zbox,
-        widgets.HTML("<b>3) Ejecutar</b>"), run_btn, bar, live, out, _watermark(widgets)]))
+        widgets.HTML("<b>3) Ejecutar</b>"), run_btn, banner,
+        widgets.HBox([zone_bar, zone_pct], layout=widgets.Layout(align_items="center")),
+        widgets.HBox([sub_bar, sub_pct], layout=widgets.Layout(align_items="center")),
+        metrics, live, out, _watermark(widgets)]))
