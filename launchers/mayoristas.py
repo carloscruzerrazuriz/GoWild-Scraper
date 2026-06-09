@@ -648,7 +648,8 @@ def run():
                     "Precio CMR", "Precio Mayorista", "Descuento Mayorista",
                     "Todos los Precios", "URL",
                 ]
-                write_excel(all_rows, str(out_path), columns=_PM_OUTPUT_COLS)
+                write_excel(all_rows, str(out_path), columns=_PM_OUTPUT_COLS,
+                            with_images=bool(capture))
                 with result_out:
                     clear_output()
                     print(f"Excel generado: {out_name}  ({len(all_rows)} filas, {len(stores_done)}/{n_stores} tiendas)")

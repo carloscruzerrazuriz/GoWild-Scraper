@@ -269,10 +269,6 @@ def run():
         value=False, description="Capturar screenshots de cards (Excel más pesado)",
         indent=False, layout=widgets.Layout(width="auto"),
     )
-    only_cyberday = widgets.Checkbox(
-        value=False, description="Solo CYBER DAY (trae únicamente productos en la promo)",
-        indent=False, layout=widgets.Layout(width="auto"),
-    )
 
     preset_radio.observe(update_stores, "value")
     for child in store_panel.children[1].children:
@@ -283,7 +279,7 @@ def run():
         widgets.HTML("<h4 style='margin:.3rem 0;'>📍 Paso 1 — Tiendas</h4>"),
         preset_radio, store_panel_wrap, store_eta,
         widgets.HTML("<h4 style='margin:.8rem 0 .3rem;'>⚙️ Opciones avanzadas</h4>"),
-        include_non_sodimac, capture_screenshots, only_cyberday,
+        include_non_sodimac, capture_screenshots,
     ])
 
     # ─── Paso 2: secciones ────────────────────────────────────────────
@@ -475,7 +471,7 @@ def run():
     def _status_with_spinner(text):
         return f"<span class='scraper-spinner'></span>{text}"
 
-    async def _run_scrape(stores, section_name, subcats, include_non_sod, screenshots, cyberday,
+    async def _run_scrape(stores, section_name, subcats, include_non_sod, screenshots,
                           run_id=None, prior_rows=None, prior_done=None):
         all_rows = list(prior_rows or [])
         non_sodimac = 0
@@ -567,7 +563,6 @@ def run():
                     res = await scrape_subcat(page, section_name, sc_name, sc_url, dummy, None,
                                                capture_screenshots=screenshots,
                                                only_sodimac=not include_non_sod,
-                                               only_cyberday=cyberday,
                                                page_progress_cb=_page_cb,
                                                auto_breadcrumb=(section_name == "Custom"))
                     if res["failed"]:
@@ -625,8 +620,7 @@ def run():
                 "partial_path": str(partial.path),
                 "run_id": run_id,
                 "section_name": section_name,
-                "include_non_sodimac": include_non_sod, "capture_screenshots": screenshots,
-                "only_cyberday": cyberday}
+                "include_non_sodimac": include_non_sod, "capture_screenshots": screenshots}
 
     def on_run_clicked(_):
         if state["running"]:
@@ -694,14 +688,13 @@ def run():
                 "stores": state["selected_stores"],
                 "include_non_sodimac": include_non_sodimac.value,
                 "capture_screenshots": capture_screenshots.value,
-                "only_cyberday": only_cyberday.value,
                 "mode": mode_selector.value,
                 "created_at": datetime.now().isoformat(),
             })
         try:
             result = asyncio.run(_run_scrape(
                 state["selected_stores"], section_name, subcats,
-                include_non_sodimac.value, capture_screenshots.value, only_cyberday.value,
+                include_non_sodimac.value, capture_screenshots.value,
                 run_id=run_id, prior_rows=prior_rows, prior_done=prior_done,
             ))
         except Exception as e:
@@ -727,11 +720,10 @@ def run():
         safe = re.sub(r"[^\w\s-]", "", result["section_name"]).strip().replace(" ", "_")
         suffix = "_all_sellers" if result["include_non_sodimac"] else ""
         suffix += "_con_imgs" if result["capture_screenshots"] else ""
-        suffix += "_cyberday" if result.get("only_cyberday") else ""
         output = OUTPUT_DIR / f"sodimac_{safe}{suffix}_{timestamp}.xlsx"
         with result_out:
             print("💾 Escribiendo Excel…")
-            write_excel(rows, str(output))
+            write_excel(rows, str(output), with_images=bool(result["capture_screenshots"]))
             n_skus = len({x["SKU"] for x in rows if x.get("SKU")})
             n_stores_res = len({x["Tienda"] for x in rows if x.get("Tienda")})
             print(f"\n✅ Listo — {len(rows)} filas · {n_skus} SKUs únicos · {n_stores_res} tienda(s)")
@@ -1620,7 +1612,7 @@ def run():
         output = OUTPUT_DIR / f"falabella_{safe}{suffix}_{timestamp}.xlsx"
         with result_out:
             print("💾 Escribiendo Excel…")
-            write_excel(rows, str(output))
+            write_excel(rows, str(output), with_images=bool(result["download_images"]))
             n_skus = len({x["SKU"] for x in rows if x.get("SKU")})
             n_zones = len({x["Tienda"] for x in rows if x.get("Tienda")})
             print(f"\n✅ Listo — {len(rows)} filas · {n_skus} SKUs únicos · {n_zones} zona(s)")
@@ -2400,7 +2392,7 @@ def run():
         output = OUTPUT_DIR / f"construmart_{safe}{suffix}_{timestamp}.xlsx"
         with result_out:
             print("💾 Escribiendo Excel…")
-            write_excel(rows, str(output))
+            write_excel(rows, str(output), with_images=bool(result["download_images"]))
             n_skus = len({x["SKU"] for x in rows if x.get("SKU")})
             n_stores_out = len({x["Nombre Tienda"] for x in rows if x.get("Nombre Tienda")})
             print(f"\n✅ Listo — {len(rows)} filas · {n_skus} SKUs únicos · {n_stores_out} tienda(s)")

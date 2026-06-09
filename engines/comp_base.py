@@ -180,24 +180,28 @@ def write_excel(rows, path, *, sheet_name="Datos", columns=None, with_images=Fal
     Usa openpyxl directo (no pandas) para no agregar dependencia. Aplica
     apply_clean_style (cabecera celeste, auto-filtro, anchos, URL truncada).
 
-    Si `with_images=True`, agrega una columna "Imagen" (última) y embebe la
-    imagen del producto (clave interna `_img` de cada row) descargándola y
-    redimensionándola. `Imagen` siempre es la última columna (convención del
-    proyecto, ver _excel_utils).
+    `with_images=False` → 1 hoja `sheet_name` (sin fotos). `with_images=True` →
+    2 hojas: `sheet_name` (sin fotos) + "Con fotos" (mismos datos + columna
+    "Imagen" con la imagen del producto descargada de su URL `_img` y embebida).
+    Mismo formato 2-hojas que el MK7.
     """
     import openpyxl
     from engines._excel_utils import apply_clean_style
 
-    cols = list(columns or OUTPUT_COLS)
-    if with_images:
-        cols = cols + ["Imagen"]
+    base_cols = list(columns or OUTPUT_COLS)
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = sheet_name
-    ws.append(cols)
+    ws.append(base_cols)
     for r in rows:
-        ws.append([r.get(c, "") for c in cols])  # "Imagen" queda vacía; se embebe después
+        ws.append([r.get(c, "") for c in base_cols])
     apply_clean_style(ws)
     if with_images:
-        _embed_images(ws, rows, len(cols))  # última columna = Imagen
+        ws2 = wb.create_sheet("Con fotos")
+        cols2 = base_cols + ["Imagen"]
+        ws2.append(cols2)
+        for r in rows:
+            ws2.append([r.get(c, "") for c in base_cols] + [""])  # "Imagen" se embebe después
+        apply_clean_style(ws2)
+        _embed_images(ws2, rows, len(cols2))  # última columna = Imagen
     wb.save(path)

@@ -224,12 +224,30 @@ async def set_zone(page: Page, region: str, comuna: str) -> bool:
         return False
     if not await _type_autocomplete(page, "Ingresa una Comuna", comuna):
         return False
-    await page.evaluate("""() => {
+    clicked = await page.evaluate("""() => {
         const btn = [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Guardar' && !b.disabled);
-        if (btn) btn.click();
+        if (btn) { btn.click(); return true; } return false;
     }""")
+    if not clicked:
+        return False
     await page.wait_for_timeout(3000)
-    return True
+    # Verificar que la zona quedó REALMENTE fijada (no 'éxito' silencioso): tras
+    # Guardar la etiqueta pasa a "Entrega en {Comuna}". Si sigue el placeholder
+    # o no contiene la comuna pedida, set_zone falló → el orquestador reintenta
+    # (en vez de scrapear con la zona anterior/equivocada). Verificado en vivo
+    # 2026-06-09: el label muestra la comuna (con NBSP), de ahí la normalización.
+    try:
+        verified = await page.evaluate("""(comuna) => {
+            const norm = s => (s||'').toLowerCase().normalize('NFD')
+                .replace(/[\\u0300-\\u036f]/g, '').replace(/\\u00a0/g, ' ').trim();
+            const p = document.querySelector('p[class*="Zone-module_zone-lable"]');
+            const label = norm(p ? p.innerText : '');
+            if (!label || /ingresa tu ubicaci/.test(label)) return false;
+            return label.includes(norm(comuna));
+        }""", comuna)
+    except Exception:
+        verified = False
+    return bool(verified)
 
 
 # ─────────────────────────────────────────  Warm-up  ───────────────────────
@@ -380,6 +398,61 @@ _EXTRACT_CARD_JS = r"""(card) => {
 }"""
 
 
+def _prices_from_json(prices):
+    """Extrae (precio_internet, precio_normal) del array `prices[]` del __NEXT_DATA__.
+
+    Formato verificado en vivo: cada entrada = {symbol, crossed, type, price:[...]}.
+      - crossed=True  → precio tachado = Precio Normal.
+      - primer no-crossed (type internetPrice/event) → Precio Internet.
+    Devuelve strings con el mismo formato que el DOM ("$ 20.590") o "" si no hay.
+    """
+    internet = normal = ""
+    for p in prices or []:
+        arr = p.get("price") or []
+        if not arr:
+            continue
+        val = f"{(p.get('symbol') or '$ ')}{arr[0]}".replace("  ", " ").strip()
+        if p.get("crossed"):
+            normal = normal or val
+        else:
+            internet = internet or val
+    return internet, normal
+
+
+def _row_from_json(r, skuid_to_pid=None):
+    """Construye una fila completa desde un result del __NEXT_DATA__ (sin DOM).
+
+    Usado por el modo experimental JSON-only y por el fallback cuando la card no
+    renderiza. El % de descuento sale de `promotions[].metadata.discountPercent`
+    (más confiable que el regex del DOM). NO trae Precio CMR / Mayorista /
+    Congelados / screenshot (esos son sólo del DOM).
+    """
+    skuid_to_pid = skuid_to_pid or {}
+    sid = str(r.get("skuId", "")).strip()
+    j_int, j_norm = _prices_from_json(r.get("prices"))
+    pct = ""
+    for promo in (r.get("promotions") or []):
+        dp = (promo.get("metadata") or {}).get("discountPercent")
+        if dp:
+            pct = f"-{int(dp)}%"
+            break
+    b = r.get("brand")
+    marca = b.get("brandName") if isinstance(b, dict) else (b or "")
+    url = r.get("url") or ""
+    if url.startswith("/"):
+        url = f"{BASE_URL}{url}"
+    all_p = [v for v in (j_int, j_norm) if v]
+    return {
+        "vendedor": r.get("sellerName") or "", "marca": marca or "",
+        "sku_dom": sid, "descripcion": r.get("displayName") or "",
+        "precios_congelados": "", "precio_normal": j_norm, "precio_internet": j_int,
+        "pct_descuento": pct, "precio_cmr": "", "precio_mayorista": "",
+        "descuento_mayorista": "", "todos_los_precios": " | ".join(all_p),
+        "url": url, "sku_input": sid, "product_id": skuid_to_pid.get(sid, ""),
+        "screenshot_path": "", "precio_fuente": "json",
+    }
+
+
 async def search_batch(
     page: Page,
     skus_query: list[str],
@@ -387,6 +460,7 @@ async def search_batch(
     *,
     max_attempts: int = 3,
     expect_results: bool = True,
+    json_only: bool = False,
 ) -> dict:
     """Run /buscar?Ntt={s1+s2+...} and return parsed results.
 
@@ -426,6 +500,21 @@ async def search_batch(
             skuid_to_pid[sid] = pid
 
     input_skus = set(skus_query)
+
+    # ── Modo experimental JSON-only ─────────────────────────────────────────
+    # Arma las filas SOLO del __NEXT_DATA__ (sin tocar el DOM): salta el scroll,
+    # el poll de render de hasta 8s, la extracción por card y los screenshots →
+    # bastante más rápido. Trade-off: no trae Precio CMR / Mayorista / Congelados
+    # ni fotos (esos son sólo del DOM). Ideal para barridos rápidos de precio/stock.
+    if json_only:
+        out_json: dict = {}
+        for r in results:
+            sid = str(r.get("skuId", "")).strip()
+            if sid and sid in input_skus and sid not in out_json:
+                row = _row_from_json(r, skuid_to_pid)
+                row["precio_fuente"] = "json_only"
+                out_json[sid] = row
+        return out_json
 
     # Strip overlays + lazy-load all cards before extracting.
     await page.evaluate("""() => {
@@ -501,6 +590,31 @@ async def search_batch(
             except Exception:
                 pass
         out[sid] = data
+
+    # ── Fallback a JSON (robusto a la latencia de Sodimac) ──────────────────
+    # El __NEXT_DATA__ (SSR, ya zona-contextualizado) trae el precio aunque el DOM
+    # tarde en pintarlo o la card no alcance a renderizar. Causa raíz #1 (carrera
+    # render-vs-extracción) y recupera cards ausentes por lentitud. Si el DOM dejó
+    # el precio en blanco → se completa del JSON; si la card ni apareció pero el
+    # SKU está en el JSON con precio → se sintetiza la fila desde el JSON.
+    for r in results:
+        sid = str(r.get("skuId", "")).strip()
+        if not sid or sid not in input_skus:
+            continue
+        j_int, j_norm = _prices_from_json(r.get("prices"))
+        if not (j_int or j_norm):
+            continue
+        if sid in out:
+            row = out[sid]
+            if not (row.get("precio_internet") or "").strip() and j_int:
+                row["precio_internet"] = j_int
+                row["precio_fuente"] = "json"
+            if not (row.get("precio_normal") or "").strip() and j_norm:
+                row["precio_normal"] = j_norm
+        else:
+            row = _row_from_json(r, skuid_to_pid)
+            row["precio_fuente"] = "json_sin_card"
+            out[sid] = row
     return out
 
 
@@ -517,6 +631,7 @@ async def search_skus_mk6(
     progress_cb=None,
     skip_store_ids=None,
     on_match=None,
+    json_only: bool = False,
 ):
     """Searches every SKU in EVERY zone (no cascading early-termination).
 
@@ -578,7 +693,8 @@ async def search_skus_mk6(
                                  "retried": retried})
                 return False
 
-            zone_shots = (Path(screenshot_dir) / store["id"]) if screenshot_dir else None
+            # En modo JSON-only no hay screenshots (no se toca el DOM).
+            zone_shots = (Path(screenshot_dir) / store["id"]) if (screenshot_dir and not json_only) else None
             found_in_zone = 0
 
             for i in range(0, n_skus, batch_size):
@@ -586,7 +702,9 @@ async def search_skus_mk6(
                 guards_for_query = [g for g in guards if g not in chunk]
                 query_skus = guards_for_query + chunk
                 try:
-                    batch_matches = await search_batch(page, query_skus, screenshot_dir=zone_shots)
+                    batch_matches = await search_batch(page, query_skus,
+                                                       screenshot_dir=zone_shots,
+                                                       json_only=json_only)
                 except Exception:
                     batch_matches = {}
                 for g in guards_for_query:

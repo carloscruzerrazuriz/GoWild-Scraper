@@ -152,3 +152,92 @@ def apply_url_truncation(ws, url_col_idx: int, next_col_idx: int | None, *,
             nxt = ws.cell(row=ri, column=next_col_idx)
             if nxt.value is None or nxt.value == "":
                 nxt.value = " "
+
+
+def _force_text_cols(ws, text_cols):
+    """Fuerza columnas (por nombre) a formato texto, quitando el .0 de floats."""
+    if not text_cols:
+        return
+    headers = {cell.value: cell.column for cell in ws[1]}
+    for name in text_cols:
+        ci = headers.get(name)
+        if not ci:
+            continue
+        for row in ws.iter_rows(min_row=2, min_col=ci, max_col=ci):
+            for cell in row:
+                if cell.value in (None, ""):
+                    continue
+                s = str(cell.value)
+                if s.endswith(".0") and s[:-2].isdigit():
+                    s = s[:-2]
+                cell.value = s
+                cell.number_format = "@"
+
+
+def write_two_sheets_df(df_no_img, rows, output_file, *, with_images=False,
+                        image_path_key="Image Path", image_col="Imagen",
+                        sheet_data="Datos", sheet_photos="Con fotos",
+                        text_cols=(), img_w=160, img_h=200, row_h=160):
+    """Escribe el Excel en formato 2-hojas (estilo MK7) para engines de DOM.
+
+    - `df_no_img`: DataFrame SIN la columna de imagen.
+    - `rows`: lista de dicts originales (mismo orden que df) — de cada uno se saca
+      la ruta local del screenshot en `image_path_key`.
+    - `with_images=False` → 1 hoja `sheet_data` (sin columna Imagen).
+    - `with_images=True`  → 2 hojas: `sheet_data` (sin fotos) + `sheet_photos`
+      (mismos datos + columna Imagen con el screenshot embebido).
+
+    Aplica `apply_clean_style` a todas las hojas y URL truncada. Defensivo: si el
+    embebido falla, no rompe el guardado. Devuelve True.
+    """
+    import os as _os
+    import pandas as _pd  # noqa: F401  (asegura pandas en el entorno)
+    import openpyxl
+    from openpyxl.drawing.image import Image as OpenpyxlImage
+    from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, TwoCellAnchor
+
+    with _pd.ExcelWriter(output_file, engine="openpyxl") as writer:
+        df_no_img.to_excel(writer, sheet_name=sheet_data, index=False)
+        if with_images:
+            di = df_no_img.copy()
+            di[image_col] = ""  # última columna
+            di.to_excel(writer, sheet_name=sheet_photos, index=False)
+
+    wb = openpyxl.load_workbook(output_file)
+    try:
+        _force_text_cols(wb[sheet_data], text_cols)
+        if with_images and sheet_photos in wb.sheetnames:
+            ws = wb[sheet_photos]
+            _force_text_cols(ws, text_cols)
+            cols = list(df_no_img.columns) + [image_col]
+            ii = cols.index(image_col) + 1
+            ws.column_dimensions[get_column_letter(ii)].width = 25
+            for r_i, rd in enumerate(rows, start=2):
+                ip = rd.get(image_path_key, "") if isinstance(rd, dict) else ""
+                if ip and _os.path.exists(ip):
+                    ws.row_dimensions[r_i].height = row_h
+                    try:
+                        img = OpenpyxlImage(ip)
+                        img.width, img.height = img_w, img_h
+                        img.anchor = TwoCellAnchor(
+                            editAs="oneCell",
+                            _from=AnchorMarker(col=ii - 1, colOff=0, row=r_i - 1, rowOff=0),
+                            to=AnchorMarker(col=ii, colOff=0, row=r_i, rowOff=0))
+                        ws.add_image(img)
+                    except Exception:
+                        pass
+            if "URL" in cols:
+                apply_url_truncation(ws, cols.index("URL") + 1, ii,
+                                     url_width=40, total_rows=len(rows) + 1)
+        wsd = wb[sheet_data]
+        dcols = list(df_no_img.columns)
+        if "URL" in dcols:
+            uc = dcols.index("URL") + 1
+            apply_url_truncation(wsd, uc, uc + 1, url_width=40,
+                                 total_rows=len(df_no_img) + 1)
+        for sn in wb.sheetnames:
+            apply_clean_style(wb[sn])
+        wb.save(output_file)
+    except Exception:
+        pass
+    return True

@@ -775,50 +775,18 @@ OUTPUT_COLS = [
 ]
 
 
-def write_excel(rows, output_file, columns=None):
+def write_excel(rows, output_file, columns=None, *, with_images=False):
+    """1 hoja "Datos" (sin fotos) o, si with_images, 2 hojas "Datos" + "Con fotos"
+    (mismos datos + imagen embebida). Mismo formato que el MK7."""
     if not rows:
         return False
-    from ._excel_utils import filter_and_reorder, apply_url_truncation
+    from ._excel_utils import filter_and_reorder, write_two_sheets_df
 
     cols_to_use = columns if columns is not None else OUTPUT_COLS
     df = pd.DataFrame(rows)
-    df = filter_and_reorder(df, cols_to_use)
-    df["Imagen"] = ""
-    df.to_excel(output_file, index=False)
-
-    wb = openpyxl.load_workbook(output_file)
-    ws = wb.active
-    try:
-        final_cols = list(df.columns)
-        ii = final_cols.index("Imagen") + 1
-        ws.column_dimensions[openpyxl.utils.get_column_letter(ii)].width = 30
-
-        for ri, rd in enumerate(rows, start=2):
-            ip = rd.get("Image Path", "")
-            if ip and os.path.exists(ip):
-                ws.row_dimensions[ri].height = 260
-                try:
-                    img = OpenpyxlImage(ip); img.width = 200; img.height = 250
-                    img.anchor = TwoCellAnchor(
-                        editAs="oneCell",
-                        _from=AnchorMarker(col=ii - 1, colOff=0, row=ri - 1, rowOff=0),
-                        to=AnchorMarker(col=ii, colOff=0, row=ri, rowOff=0),
-                    )
-                    ws.add_image(img)
-                except Exception:
-                    pass
-
-        if "URL" in final_cols:
-            url_col_idx = final_cols.index("URL") + 1
-            apply_url_truncation(ws, url_col_idx, ii, url_width=40, total_rows=len(rows) + 1)
-
-        from ._excel_utils import apply_clean_style
-        for _sn in wb.sheetnames:
-            apply_clean_style(wb[_sn])
-        wb.save(output_file)
-    except Exception as e:
-        console.print(f"[yellow]Aviso embebiendo imágenes: {e}[/]")
-    return True
+    df = filter_and_reorder(df, cols_to_use)  # sin columna Imagen
+    return write_two_sheets_df(df, rows, output_file, with_images=with_images,
+                               img_w=200, img_h=250, row_h=260)
 
 
 # ─────────────────────────────────────────  UI  ────────────────────────────

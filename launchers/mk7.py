@@ -929,6 +929,7 @@ def run():
                     screenshot_dir=str(shots_dir),
                     progress_cb=_sodimac_wrap,
                     on_match=_on_match_s,
+                    json_only=bool(json_only_toggle.value),
                 )
             # Guard: si alguna tienda completó sin event zone_end (raro), no la marcamos
             # — preferimos que aparezca como "no terminada" en lugar de un falso done.
@@ -1030,9 +1031,14 @@ def run():
 
     run_btn.on_click(on_run_clicked)
 
+    json_only_toggle = widgets.Checkbox(
+        value=False, indent=False,
+        description="⚡ Modo experimental: solo JSON (más rápido · SOLO Sodimac · sin Precio CMR/Mayorista/Congelados ni fotos)",
+        layout=widgets.Layout(width="auto"))
+
     run_container = widgets.VBox([
         widgets.HTML("<h4 style='margin:.8rem 0 .3rem;'>🚀 Paso 3 — Ejecutar</h4>"),
-        run_summary, speed_note, run_btn, running_banner,
+        run_summary, speed_note, json_only_toggle, run_btn, running_banner,
         widgets.HBox([store_bar, store_pct], layout=widgets.Layout(align_items="center")),
         widgets.HBox([sku_bar, sku_pct], layout=widgets.Layout(align_items="center")),
         live_status, live_metrics, result_out,

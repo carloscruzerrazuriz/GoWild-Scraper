@@ -484,74 +484,15 @@ OUTPUT_COLS = [
 ]
 
 
-def write_excel(rows, output_file, *, with_images=True):
-    """Escribe el Excel en UNA sola hoja ('Datos') con el estilo limpio unificado
-    (cabecera celeste, auto-filtro, anchos, SKU como texto).
-
-    A diferencia del buscador por SKU, NO genera dos hojas. El toggle de la UI
-    decide vía `with_images`: si True, agrega la columna 'Imagen' con la
-    screenshot de la card embebida; si False, no incluye imágenes (Excel liviano)."""
+def write_excel(rows, output_file, *, with_images=False):
+    """1 hoja "Datos" (sin fotos) o, si with_images, 2 hojas "Datos" + "Con fotos"
+    (mismos datos + screenshot de la card embebida). Mismo formato que el MK7."""
+    from ._excel_utils import write_two_sheets_df
     df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=OUTPUT_COLS)
     for c in OUTPUT_COLS:
         if c not in df.columns:
             df[c] = ""
-    img_paths = list(df["Image Path"]) if "Image Path" in df.columns else ["" for _ in range(len(df))]
-    out = df[OUTPUT_COLS].copy()
-    if with_images:
-        out["Imagen"] = ""
-
-    with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
-        out.to_excel(writer, sheet_name="Datos", index=False)
-
-    try:
-        import openpyxl
-        from openpyxl.drawing.image import Image as OpenpyxlImage
-        from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, TwoCellAnchor
-        from openpyxl.utils import get_column_letter
-
-        wb = openpyxl.load_workbook(output_file)
-        ws = wb["Datos"]
-
-        # SKU como texto (sin .0).
-        headers = {cell.value: cell.column for cell in ws[1]}
-        sku_idx = headers.get("SKU")
-        if sku_idx:
-            for row in ws.iter_rows(min_row=2, min_col=sku_idx, max_col=sku_idx):
-                for cell in row:
-                    if cell.value in (None, ""):
-                        continue
-                    s = str(cell.value)
-                    if s.endswith(".0") and s[:-2].isdigit():
-                        s = s[:-2]
-                    cell.value = s
-                    cell.number_format = "@"
-
-        # Embed screenshots (solo si with_images y hay columna Imagen).
-        if with_images:
-            img_col_idx = headers.get("Imagen")
-            if img_col_idx:
-                ws.column_dimensions[get_column_letter(img_col_idx)].width = 26
-                for i, path in enumerate(img_paths):
-                    if not path or not Path(path).exists():
-                        continue
-                    ri = i + 2
-                    ws.row_dimensions[ri].height = 160
-                    try:
-                        img = OpenpyxlImage(path); img.width = 170; img.height = 200
-                        img.anchor = TwoCellAnchor(
-                            editAs="oneCell",
-                            _from=AnchorMarker(col=img_col_idx - 1, colOff=0, row=ri - 1, rowOff=0),
-                            to=AnchorMarker(col=img_col_idx, colOff=0, row=ri, rowOff=0))
-                        ws.add_image(img)
-                    except Exception:
-                        pass
-
-        # Estética unificada (cabecera celeste, auto-filtro, anchos auto, URL
-        # truncada con spacer, SIN freeze) — helper compartido en _excel_utils.
-        from ._excel_utils import apply_clean_style
-        apply_clean_style(ws)
-
-        wb.save(output_file)
-    except Exception:
-        pass
+    out = df[OUTPUT_COLS].copy()  # sin columna Imagen
+    write_two_sheets_df(out, rows or [], output_file, with_images=with_images,
+                        text_cols=("SKU",), img_w=170, img_h=200)
     return output_file
