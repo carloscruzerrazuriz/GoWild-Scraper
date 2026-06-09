@@ -20,3 +20,7 @@ dist/
 # Scraper Results
 *.csv
 *.xlsx
+
+# Cache de runtime del árbol de secciones (Maestra/Sodimac Fast)
+sections_cache_*.json
+*.xlsx

@@ -18,6 +18,7 @@ _TOOLS = {
     "ferni":        "launchers.ferni",
     "competidores": "launchers.competidores",
     "pcfactory":    "launchers.pcfactory",
+    "sodimac_fast": "launchers.sodimac_fast",
 }
 
 

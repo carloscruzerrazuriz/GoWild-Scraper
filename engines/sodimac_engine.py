@@ -460,7 +460,6 @@ async def search_batch(
     *,
     max_attempts: int = 3,
     expect_results: bool = True,
-    json_only: bool = False,
 ) -> dict:
     """Run /buscar?Ntt={s1+s2+...} and return parsed results.
 
@@ -500,21 +499,6 @@ async def search_batch(
             skuid_to_pid[sid] = pid
 
     input_skus = set(skus_query)
-
-    # ── Modo experimental JSON-only ─────────────────────────────────────────
-    # Arma las filas SOLO del __NEXT_DATA__ (sin tocar el DOM): salta el scroll,
-    # el poll de render de hasta 8s, la extracción por card y los screenshots →
-    # bastante más rápido. Trade-off: no trae Precio CMR / Mayorista / Congelados
-    # ni fotos (esos son sólo del DOM). Ideal para barridos rápidos de precio/stock.
-    if json_only:
-        out_json: dict = {}
-        for r in results:
-            sid = str(r.get("skuId", "")).strip()
-            if sid and sid in input_skus and sid not in out_json:
-                row = _row_from_json(r, skuid_to_pid)
-                row["precio_fuente"] = "json_only"
-                out_json[sid] = row
-        return out_json
 
     # Strip overlays + lazy-load all cards before extracting.
     await page.evaluate("""() => {
@@ -631,7 +615,6 @@ async def search_skus_mk6(
     progress_cb=None,
     skip_store_ids=None,
     on_match=None,
-    json_only: bool = False,
 ):
     """Searches every SKU in EVERY zone (no cascading early-termination).
 
@@ -693,8 +676,7 @@ async def search_skus_mk6(
                                  "retried": retried})
                 return False
 
-            # En modo JSON-only no hay screenshots (no se toca el DOM).
-            zone_shots = (Path(screenshot_dir) / store["id"]) if (screenshot_dir and not json_only) else None
+            zone_shots = (Path(screenshot_dir) / store["id"]) if screenshot_dir else None
             found_in_zone = 0
 
             for i in range(0, n_skus, batch_size):
@@ -703,8 +685,7 @@ async def search_skus_mk6(
                 query_skus = guards_for_query + chunk
                 try:
                     batch_matches = await search_batch(page, query_skus,
-                                                       screenshot_dir=zone_shots,
-                                                       json_only=json_only)
+                                                       screenshot_dir=zone_shots)
                 except Exception:
                     batch_matches = {}
                 for g in guards_for_query:
