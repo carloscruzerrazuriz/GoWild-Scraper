@@ -184,9 +184,12 @@ async def fetch_zone_cookie(store, *, headless=True, browser=None):
         ctx = await b.new_context(user_agent=USER_AGENT)
         pg = await ctx.new_page()
         try:
-            # Sin warmup: para el handshake sólo necesitamos las cookies de zona
-            # (las queries van por urllib, no por el navegador). Ahorra ~5s/zona.
-            # Verificado 2026-06-09: la cookie igual fija el precio zonal correcto.
+            # warmup ANTES de set_zone: en Colab la IP de Google recibe el
+            # challenge de Cloudflare y warmup_session lo limpia + fija tokens de
+            # sesión. Sin warmup, set_zone falla en TODAS las zonas en Colab (sí
+            # funciona desde IP local, por eso el bug se coló). Igual que el MK7/
+            # Maestra de producción. (2026-06-09)
+            await _se.warmup_session(pg)
             ok = await _se.set_zone(pg, store["region"], store["comuna"])
             if not ok:
                 ok = await _se.set_zone(pg, store["region"], store["comuna"])

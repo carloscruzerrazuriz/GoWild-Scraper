@@ -137,6 +137,13 @@ def _watermark(widgets):
         "All rights reserved · Proprietary — No unauthorized use or distribution</span></div>")
 
 
+def _zfail_note(state):
+    """Nota HTML si hubo zonas que no pudieron fijar zona (set_zone falló)."""
+    n = state.get("zfail", 0)
+    return (f"<br><span style='color:#c0392b;font-size:.9em'>⚠️ {n} zona(s) no fijaron "
+            f"zona y se saltaron (latencia/Cloudflare) — reintentá esas zonas.</span>") if n else ""
+
+
 # ─── Modo 1: Buscador por SKU ────────────────────────────────────────────────
 def _run_sku():
     import io, time as _time, asyncio
@@ -230,7 +237,7 @@ def _run_sku():
                 clear_output()
                 print("⚠️ Falta SKUs o zonas.")
             return
-        state.update(running=True, rows=[], zi=0)
+        state.update(running=True, rows=[], zi=0, zfail=0)
         run_btn.layout.display = "none"
         banner.value = _running_banner(widgets).value
         zone_bar.max = len(zones)
@@ -264,6 +271,7 @@ def _run_sku():
                 zone_pct.value = (f"<span style='color:#555;font-size:.9em'>"
                                   f"{int(100*zone_bar.value/max(1,zone_bar.max))}%</span>")
                 if ev.get("zone_failed"):
+                    state["zfail"] = state.get("zfail", 0) + 1
                     live.value = (f"<span style='color:#c0392b'>✗ {ev['store']['name']}: "
                                   f"no se pudo fijar la zona (saltada)</span>")
                 metrics.value = _metrics_html(len(state["rows"]), _time.time() - t0)
@@ -272,27 +280,36 @@ def _run_sku():
             rows = asyncio.run(eng.search_skus(
                 skus, zones, easy_map=easy, desc_map=desc, progress_cb=_cb,
                 on_row=lambda r: state["rows"].append(r)))
-            ts = datetime.now().strftime("%Y-%m-%d_%H%M")
-            outp = OUTPUT_DIR / f"SodimacFast_SKU_{ts}.xlsx"
-            eng.write_excel(rows, str(outp))
             el = _time.time() - t0
             metrics.value = _metrics_html(len(rows), el)
             live.value = "<span style='color:#27ae60'>✓ Listo.</span>"
-            with out:
-                display(HTML(f"<div style='background:#e8f5e9;border:1px solid #66bb6a;padding:.8rem;"
-                             f"border-radius:8px;'>✅ <b>{len(rows)}</b> filas en {_fmt_elapsed(el)} · "
-                             f"<code>{outp.name}</code></div>"))
-            _telemetry("sku", len(rows), el, outp.name)
-            if IN_COLAB:
-                try:
-                    colab_files.download(str(outp))
-                except Exception:
-                    pass
-                redl = widgets.Button(description="Descargar Excel de nuevo", icon="download",
-                                      button_style="info", layout=widgets.Layout(width="260px"))
-                redl.on_click(lambda _x: colab_files.download(str(outp)))
+            if not rows:
                 with out:
-                    display(redl)
+                    display(HTML("<div style='background:#fff4e0;border:1px solid #f0a020;padding:.8rem;"
+                                 "border-radius:8px;'>⚠️ <b>0 productos</b> encontrados — no se generó archivo. "
+                                 "Revisá los SKU o las zonas (¿zonas con set_zone fallido?).</div>"))
+                _telemetry("sku", 0, el, "")
+            else:
+                ts = datetime.now().strftime("%Y-%m-%d_%H%M")
+                outp = OUTPUT_DIR / f"SodimacFast_SKU_{ts}.xlsx"
+                eng.write_excel(rows, str(outp))
+                with out:
+                    display(HTML(f"<div style='background:#e8f5e9;border:1px solid #66bb6a;padding:.8rem;"
+                                 f"border-radius:8px;'>✅ <b>{len(rows)}</b> filas en {_fmt_elapsed(el)} · "
+                                 f"<code>{outp.name}</code>{_zfail_note(state)}</div>"))
+                _telemetry("sku", len(rows), el, outp.name)
+                if IN_COLAB and outp.exists():
+                    def _dl(_x=None, _p=str(outp)):
+                        try:
+                            colab_files.download(_p)
+                        except Exception:
+                            pass
+                    _dl()
+                    redl = widgets.Button(description="Descargar Excel de nuevo", icon="download",
+                                          button_style="info", layout=widgets.Layout(width="260px"))
+                    redl.on_click(_dl)
+                    with out:
+                        display(redl)
         except Exception as e:
             with out:
                 display(HTML(f"<div style='background:#ffe4e4;border:1px solid #c0392b;padding:.8rem;"
@@ -417,7 +434,7 @@ def _run_seccion():
                 clear_output()
                 print("⚠️ Falta subcategorías o zonas.")
             return
-        state.update(running=True, rows=[], zi=0)
+        state.update(running=True, rows=[], zi=0, zfail=0)
         run_btn.layout.display = "none"
         banner.value = _running_banner(widgets).value
         zone_bar.max = len(zones)
@@ -457,6 +474,7 @@ def _run_seccion():
                 zone_pct.value = (f"<span style='color:#555;font-size:.9em'>"
                                   f"{int(100*zone_bar.value/max(1,zone_bar.max))}%</span>")
                 if ev.get("zone_failed"):
+                    state["zfail"] = state.get("zfail", 0) + 1
                     live.value = (f"<span style='color:#c0392b'>✗ {ev['store']['name']}: "
                                   f"no se pudo fijar la zona (saltada)</span>")
                 metrics.value = _metrics_html(len(state["rows"]), _time.time() - t0)
@@ -464,27 +482,36 @@ def _run_seccion():
         try:
             rows = asyncio.run(eng.scrape_sections(
                 subs, zones, progress_cb=_cb, on_row=lambda r: state["rows"].append(r)))
-            ts = datetime.now().strftime("%Y-%m-%d_%H%M")
-            outp = OUTPUT_DIR / f"SodimacFast_Seccion_{ts}.xlsx"
-            eng.write_excel(rows, str(outp))
             el = _time.time() - t0
             metrics.value = _metrics_html(len(rows), el)
             live.value = "<span style='color:#27ae60'>✓ Listo.</span>"
-            with out:
-                display(HTML(f"<div style='background:#e8f5e9;border:1px solid #66bb6a;padding:.8rem;"
-                             f"border-radius:8px;'>✅ <b>{len(rows)}</b> filas en {_fmt_elapsed(el)} · "
-                             f"<code>{outp.name}</code></div>"))
-            _telemetry("seccion", len(rows), el, outp.name)
-            if IN_COLAB:
-                try:
-                    colab_files.download(str(outp))
-                except Exception:
-                    pass
-                redl = widgets.Button(description="Descargar Excel de nuevo", icon="download",
-                                      button_style="info", layout=widgets.Layout(width="260px"))
-                redl.on_click(lambda _x: colab_files.download(str(outp)))
+            if not rows:
                 with out:
-                    display(redl)
+                    display(HTML("<div style='background:#fff4e0;border:1px solid #f0a020;padding:.8rem;"
+                                 "border-radius:8px;'>⚠️ <b>0 productos</b> en la selección — no se generó archivo. "
+                                 "Probá otra sección/subcategoría.{_zf}</div>".format(_zf=_zfail_note(state))))
+                _telemetry("seccion", 0, el, "")
+            else:
+                ts = datetime.now().strftime("%Y-%m-%d_%H%M")
+                outp = OUTPUT_DIR / f"SodimacFast_Seccion_{ts}.xlsx"
+                eng.write_excel(rows, str(outp))
+                with out:
+                    display(HTML(f"<div style='background:#e8f5e9;border:1px solid #66bb6a;padding:.8rem;"
+                                 f"border-radius:8px;'>✅ <b>{len(rows)}</b> filas en {_fmt_elapsed(el)} · "
+                                 f"<code>{outp.name}</code>{_zfail_note(state)}</div>"))
+                _telemetry("seccion", len(rows), el, outp.name)
+                if IN_COLAB and outp.exists():
+                    def _dl(_x=None, _p=str(outp)):
+                        try:
+                            colab_files.download(_p)
+                        except Exception:
+                            pass
+                    _dl()
+                    redl = widgets.Button(description="Descargar Excel de nuevo", icon="download",
+                                          button_style="info", layout=widgets.Layout(width="260px"))
+                    redl.on_click(_dl)
+                    with out:
+                        display(redl)
         except Exception as e:
             with out:
                 display(HTML(f"<div style='background:#ffe4e4;border:1px solid #c0392b;padding:.8rem;"
