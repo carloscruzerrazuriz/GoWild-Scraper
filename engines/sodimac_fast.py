@@ -46,12 +46,13 @@ _CTX.verify_mode = ssl.CERT_NONE
 MK7_COLS = [
     "Tienda", "Nombre Tienda", "SKU Easy", "Desc. Producto", "SKU Sodimac",
     "Vendedor", "Marca", "Descripción Producto", "Precio Normal",
-    "Precio Internet", "% Descuento", "Todos los Precios", "URL",
+    "Precio Internet", "% Descuento", "En Oferta", "Precio Mayorista",
+    "Promos", "URL",
 ]
 SECCION_COLS = [
     "Tienda", "Nombre Tienda", "Sección", "Subcategoría", "Vendedor", "Marca",
     "SKU", "Descripción Producto", "Precio Normal", "Precio Internet",
-    "% Descuento", "Todos los Precios", "URL",
+    "% Descuento", "En Oferta", "Precio Mayorista", "Promos", "URL",
 ]
 
 
@@ -99,33 +100,72 @@ def _find_results(obj):
     return None
 
 
-def _pct_from_promotions(r):
-    """% de descuento desde promotions[].metadata.discountPercent ('' si no hay)."""
-    for promo in (r.get("promotions") or []):
-        dp = (promo.get("metadata") or {}).get("discountPercent")
+def _num(price_str):
+    """'$ 21.990' -> 21990.0 (o None)."""
+    if not price_str:
+        return None
+    digits = re.sub(r"[^\d]", "", str(price_str))
+    return float(digits) if digits else None
+
+
+def _discounts(r):
+    """Analiza prices[] + promotions[] y devuelve la info de descuento.
+
+    Distingue lo que en la web es "está en oferta" (precio tachado `crossed` en
+    prices[]) de las promociones CONDICIONALES de promotions[] (campañas de
+    evento tipo CES, descuento empleado, envío gratis, precio mayorista PRO).
+    Devuelve dict: pct (oferta de vitrina), en_oferta, mayorista, promos.
+    """
+    internet, normal = _se._prices_from_json(r.get("prices"))
+    # % de vitrina: precio tachado (normal) vs internet — coincide con el badge web.
+    pct = ""
+    n, i = _num(normal), _num(internet)
+    if n and i and i < n:
+        pct = f"-{round(100 * (n - i) / n)}%"
+    en_oferta = "Sí" if pct else ""
+
+    mayorista = ""
+    promos = []
+    for pr in (r.get("promotions") or []):
+        camp = (pr.get("campaignName") or "").strip()
+        desc = (pr.get("description") or "").strip()
+        dp = (pr.get("metadata") or {}).get("discountPercent")
+        pp = pr.get("prices") or []
+        pprice = f"$ {pp[0]['price'][0]}" if (pp and pp[0].get("price")) else ""
+        blob = f"{camp} {desc}".upper()
+        # Ignorar condicionales que NO son oferta pública de precio:
+        if camp == "ENVIO_PLUS" or "COLABORADOR" in blob or "EMPLEAD" in blob:
+            continue
+        if camp == "PRECIO+PRO" or "MAYORISTA" in blob:
+            mayorista = mayorista or pprice
+            continue
         if dp:
-            return f"-{int(dp)}%"
-    return ""
+            tag = camp or desc or "Promo"
+            promos.append(f"{tag} -{int(dp)}%" + (f" {pprice}" if pprice else ""))
+    return {"internet": internet, "normal": normal, "pct": pct,
+            "en_oferta": en_oferta, "mayorista": mayorista,
+            "promos": " | ".join(promos)}
 
 
 def _raw(r):
     """Normaliza un result del JSON a campos crudos comunes a ambos modos."""
-    internet, normal = _se._prices_from_json(r.get("prices"))
+    d = _discounts(r)
     b = r.get("brand")
     marca = b.get("brandName") if isinstance(b, dict) else (b or "")
     url = r.get("url") or ""
     if url.startswith("/"):
         url = f"https://www.sodimac.cl{url}"
-    all_p = [v for v in (internet, normal) if v]
     return {
         "sku": str(r.get("skuId", "")).strip(),
         "vendedor": r.get("sellerName") or "",
         "marca": marca or "",
         "descripcion": r.get("displayName") or "",
-        "precio_internet": internet,
-        "precio_normal": normal,
-        "pct_descuento": _pct_from_promotions(r),
-        "todos_los_precios": " | ".join(all_p),
+        "precio_internet": d["internet"],
+        "precio_normal": d["normal"],
+        "pct_descuento": d["pct"],
+        "en_oferta": d["en_oferta"],
+        "precio_mayorista": d["mayorista"],
+        "promos": d["promos"],
         "url": url,
         "is_sodimac": "SODIMAC" in (r.get("sellerId", "") or r.get("sellerName", "") or "").upper(),
     }
@@ -241,8 +281,9 @@ async def search_skus(skus, stores, *, easy_map=None, desc_map=None,
                             "Marca": d["marca"], "Descripción Producto": d["descripcion"],
                             "Precio Normal": d["precio_normal"],
                             "Precio Internet": d["precio_internet"],
-                            "% Descuento": d["pct_descuento"],
-                            "Todos los Precios": d["todos_los_precios"], "URL": d["url"],
+                            "% Descuento": d["pct_descuento"], "En Oferta": d["en_oferta"],
+                            "Precio Mayorista": d["precio_mayorista"], "Promos": d["promos"],
+                            "URL": d["url"],
                         })
                         found += 1
                         if on_row:
@@ -314,8 +355,9 @@ async def scrape_sections(subcats, stores, *, headless=True, progress_cb=None,
                                 "SKU": d["sku"], "Descripción Producto": d["descripcion"],
                                 "Precio Normal": d["precio_normal"],
                                 "Precio Internet": d["precio_internet"],
-                                "% Descuento": d["pct_descuento"],
-                                "Todos los Precios": d["todos_los_precios"], "URL": d["url"],
+                                "% Descuento": d["pct_descuento"], "En Oferta": d["en_oferta"],
+                                "Precio Mayorista": d["precio_mayorista"], "Promos": d["promos"],
+                                "URL": d["url"],
                             })
                             if on_row:
                                 on_row(rows[-1])
