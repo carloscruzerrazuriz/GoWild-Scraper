@@ -12,9 +12,9 @@ zona. La zona se fija con cookies. Entonces:
      HTTP plano (urllib) leyendo el `__NEXT_DATA__` → sin render, sin screenshots,
      sin extracción por card. Verificado en vivo 2026-06-09.
 
-Dos modos (mismo contrato de salida que MK7/Maestra, en español):
-  - search_skus(...)     : modo "Buscador por SKU" (como el MK7).
-  - scrape_sections(...) : modo "Maestra Sección" (recorre categorías).
+Único modo (experimental): scrape_sections(...) — "Maestra Sección" (recorre
+categorías). El modo "Buscador por SKU" (estilo MK7) fue descartado (2026-06-10):
+para búsqueda por SKU se usa el MK7 de producción.
 
 Trade-off vs los engines con navegador: NO trae Precio CMR / Mayorista / Precios
 Congelados ni fotos (esos sólo salen del DOM). Sí trae precio normal/internet,
@@ -42,13 +42,7 @@ _CTX = ssl.create_default_context()
 _CTX.check_hostname = False
 _CTX.verify_mode = ssl.CERT_NONE
 
-# Columnas de salida (mismas convenciones que MK7/Maestra).
-MK7_COLS = [
-    "Tienda", "Nombre Tienda", "SKU Easy", "Desc. Producto", "SKU Sodimac",
-    "Vendedor", "Marca", "Descripción Producto", "Precio Normal",
-    "Precio Internet", "% Descuento", "En Oferta", "Precio Mayorista",
-    "Promos", "URL",
-]
+# Columnas de salida (mismas convenciones que la Maestra de producción).
 SECCION_COLS = [
     "Tienda", "Nombre Tienda", "Sección", "Subcategoría", "Vendedor", "Marca",
     "SKU", "Descripción Producto", "Precio Normal", "Precio Internet",
@@ -226,85 +220,10 @@ async def discover_sections(*, headless=True):
             await b.close()
 
 
-# ── Modo 1: Buscador por SKU (estilo MK7) ───────────────────────────────────
-async def search_skus(skus, stores, *, easy_map=None, desc_map=None,
-                      guards=None, batch_size=DEFAULT_BATCH_SIZE,
-                      headless=True, progress_cb=None, on_row=None,
-                      only_sodimac=True):
-    """Busca cada SKU en cada zona vía /buscar (urllib) con la cookie de zona.
-
-    `easy_map`/`desc_map`: dict SKU→(SKU Easy / Desc. Producto del archivo de carga).
-    Devuelve lista de rows (MK7_COLS). Eventos: zone_start, zone_done(zone_failed),
-    batch_done, complete.
-    """
-    from playwright.async_api import async_playwright
-    from playwright_stealth import Stealth
-
-    guards = list(guards) if guards else list(DEFAULT_GUARD_SKUS)
-    easy_map = easy_map or {}
-    desc_map = desc_map or {}
-    skus = [str(s).strip() for s in skus if str(s).strip()]
-    rows = []
-
-    async with Stealth().use_async(async_playwright()) as pw:
-        b = await pw.chromium.launch(headless=headless,
-                                     args=["--no-sandbox", "--disable-dev-shm-usage"])
-        try:
-            for store in stores:
-                if progress_cb:
-                    progress_cb({"event": "zone_start", "store": store, "n_skus": len(skus)})
-                cookie = await fetch_zone_cookie(store, browser=b)
-                if not cookie:
-                    if progress_cb:
-                        progress_cb({"event": "zone_done", "store": store, "zone_failed": True})
-                    continue
-                nb = max(1, (len(skus) + batch_size - 1) // batch_size)
-                for bi in range(0, len(skus), batch_size):
-                    chunk = skus[bi:bi + batch_size]
-                    gq = [g for g in guards if g not in chunk]
-                    url = f"{BASE_URL}/buscar?Ntt={'+'.join(gq + chunk)}"
-                    res = _fetch_results(url, cookie)
-                    by_sku = {}
-                    for r in res:
-                        d = _raw(r)
-                        if d["sku"] and d["sku"] not in by_sku:
-                            by_sku[d["sku"]] = d
-                    found = 0
-                    for sku in chunk:
-                        d = by_sku.get(sku)
-                        if not d:
-                            continue
-                        if only_sodimac and not d["is_sodimac"]:
-                            continue
-                        rows.append({
-                            "Tienda": store["id"], "Nombre Tienda": store["name"],
-                            "SKU Easy": easy_map.get(sku, ""),
-                            "Desc. Producto": desc_map.get(sku, ""),
-                            "SKU Sodimac": sku, "Vendedor": d["vendedor"],
-                            "Marca": d["marca"], "Descripción Producto": d["descripcion"],
-                            "Precio Normal": d["precio_normal"],
-                            "Precio Internet": d["precio_internet"],
-                            "% Descuento": d["pct_descuento"], "En Oferta": d["en_oferta"],
-                            "Precio Mayorista": d["precio_mayorista"], "Promos": d["promos"],
-                            "URL": d["url"],
-                        })
-                        found += 1
-                        if on_row:
-                            on_row(rows[-1])
-                    if progress_cb:
-                        progress_cb({"event": "batch_done", "store": store,
-                                     "batch": (bi // batch_size) + 1, "total_batches": nb,
-                                     "found_in_batch": found})
-                if progress_cb:
-                    progress_cb({"event": "zone_done", "store": store, "zone_failed": False})
-        finally:
-            await b.close()
-    if progress_cb:
-        progress_cb({"event": "complete", "n_rows": len(rows)})
-    return rows
-
-
-# ── Modo 2: Maestra Sección (recorre categorías) ────────────────────────────
+# ── Maestra Sección (recorre categorías) — ÚNICO modo de Sodimac Fast ────────
+# NOTA: el modo "Buscador por SKU" (estilo MK7) fue DESCARTADO (2026-06-10). Para
+# búsqueda por SKU se usa el MK7 de producción; Sodimac Fast es sólo experimental
+# para Sección.
 async def scrape_sections(subcats, stores, *, headless=True, progress_cb=None,
                           on_row=None, only_sodimac=True):
     """Recorre las subcategorías elegidas en cada zona vía urllib (paginando JSON).
@@ -396,7 +315,7 @@ def write_excel(rows, output_file, *, columns=None):
 
     if not rows:
         return False
-    cols = columns or (MK7_COLS if "SKU Sodimac" in rows[0] else SECCION_COLS)
+    cols = columns or SECCION_COLS
     df = pd.DataFrame(rows)
     for c in cols:
         if c not in df.columns:
