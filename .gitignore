@@ -21,6 +21,6 @@ dist/
 *.csv
 *.xlsx
 
-# Cache de runtime del árbol de secciones (Maestra/Sodimac Fast)
+# Cache de runtime del árbol de secciones (Maestra)
 sections_cache_*.json
 *.xlsx

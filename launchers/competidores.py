@@ -14,11 +14,21 @@ lado: Tienda, Sección, Subcategoría, Marca, SKU, Descripción, Precio Normal,
 Precio Internet, % Descuento, URL.
 """
 
-# Engines de API disponibles (clave interna → módulo en engines/).
+# Engines disponibles (clave interna → módulo en engines/). Todos cumplen el mismo
+# contrato (discover_sections / scrape_section / write_excel) y los maneja la misma
+# UI, sin importar si por dentro usan API JSON, DOM (HTML plano) o navegador.
 _API_ENGINES = {
+    # Tier A — API JSON pública (rápidos)
     "puntomaestro": "engines.comp_puntomaestro",
     "ferrobal":     "engines.comp_ferrobal",
     "imperial":     "engines.comp_imperial",
+    # Tier B — DOM server-rendered (HTML plano, urllib + BeautifulSoup)
+    "construplaza": "engines.comp_construplaza",
+    "dvp":          "engines.comp_dvp",
+    "yolito":       "engines.comp_yolito",
+    "oviedo":       "engines.comp_oviedo",
+    # Tier C — SPA con navegador (Playwright headless)
+    "prodalam":     "engines.comp_prodalam",
 }
 # Retailers que delegan en la Maestra de producción.
 _MAESTRA_RETAILERS = {"sodimac", "construmart"}
@@ -47,12 +57,17 @@ def run():
             ("🟢 PuntoMaestro  (API VTEX — rápido)", "puntomaestro"),
             ("🟢 Ferrobal  (API WooCommerce — rápido)", "ferrobal"),
             ("🟢 Imperial  (API Oracle — rápido, precio por zona)", "imperial"),
+            ("🟡 Construplaza  (Magento — DOM, tienda Matucana 27)", "construplaza"),
+            ("🟡 DVP  (Salesforce Commerce — DOM)", "dvp"),
+            ("🟡 Yolito  (ASP.NET — DOM)", "yolito"),
+            ("🟡 Oviedo  (PHP — DOM)", "oviedo"),
+            ("🔴 Prodalam  (Angular SPA — navegador, más lento)", "prodalam"),
             ("🔧 Sodimac  (vía Maestra Sección con tiendas/zona)", "sodimac"),
             ("🔧 Construmart  (vía Maestra Sección)", "construmart"),
         ],
         value="puntomaestro", description="Retailer:",
         style={"description_width": "initial"},
-        layout=widgets.Layout(width="520px"),
+        layout=widgets.Layout(width="560px"),
     )
     cont_btn = widgets.Button(description="Continuar →", button_style="success",
                               layout=widgets.Layout(width="200px"))

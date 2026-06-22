@@ -10,3 +10,4 @@ openpyxl
 questionary
 rich
 requests
+beautifulsoup4
