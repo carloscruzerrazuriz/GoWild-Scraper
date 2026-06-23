@@ -25,6 +25,9 @@ OUTPUT_COLS = _b.OUTPUT_COLS
 
 RETAILER_NAME = "Oviedo"
 USES_BROWSER = False
+ZONE_NOTE = ("Oviedo (PHP) muestra **precio único** en su catálogo; la sucursal/región "
+             "sólo aplica al despacho/retiro. Por eso no hay selector de zona. Nota: las "
+             "cards del listado no exponen la marca → la columna Marca puede salir vacía.")
 BASE = "https://www.oviedo.cl"
 _PER_PAGE = 16
 _MAX_PAGES = 120

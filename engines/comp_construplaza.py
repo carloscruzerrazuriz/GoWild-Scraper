@@ -25,6 +25,10 @@ OUTPUT_COLS = _b.OUTPUT_COLS
 
 RETAILER_NAME = "Construplaza"
 USES_BROWSER = False
+ZONE_NOTE = ("Construplaza es multistore Magento: la 'zona' es la tienda física, fijada "
+             "en la URL. Este engine usa la tienda **Matucana 27** (la que pidió Mauro) "
+             "y captura su precio. No hay selector de zona porque está fijada a esa "
+             "tienda; para otra tienda habría que apuntar el engine a su URL.")
 BASE = "https://www.construplaza.cl"
 
 _MAX_PAGES = 60  # tope de seguridad por subcategoría

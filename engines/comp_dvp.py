@@ -24,6 +24,10 @@ OUTPUT_COLS = _b.OUTPUT_COLS
 
 RETAILER_NAME = "DVP"
 USES_BROWSER = False
+ZONE_NOTE = ("DVP (Salesforce Commerce) sirve **precio único de sitio** en su catálogo; "
+             "la sucursal/región sólo afecta despacho. Por eso no hay selector de zona. "
+             "Nota: los tiles del listado no exponen la marca → la columna Marca puede "
+             "salir vacía.")
 BASE = "https://www.dvp.cl"
 _GRID = (BASE + "/on/demandware.store/Sites-dvp-chile-Site/es_CL/"
          "Search-UpdateGrid?cgid={cgid}&start={start}&sz={sz}")

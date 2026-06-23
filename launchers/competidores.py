@@ -236,12 +236,21 @@ def _run_api_ui(eng):
     # ─── Opciones: zona (si el engine la soporta) + imágenes ────────────
     _zones = getattr(eng, "ZONES", None)
     zone_dd = None
+    zone_note = None
     if _zones:
         zone_dd = widgets.Dropdown(
             options=list(_zones), value=_zones[0][1],
             description=getattr(eng, "ZONE_TITLE", "Zona") + ":",
             style={"description_width": "initial"},
             layout=widgets.Layout(width="460px"))
+    else:
+        # Sin selector de zona: explicar POR QUÉ (precio único / tienda fija / etc.).
+        _msg = getattr(eng, "ZONE_NOTE", None) or (
+            f"{retailer} no usa selector de zona (precio único en su catálogo).")
+        zone_note = widgets.HTML(
+            f"<div style='background:#fef9e7;border:1px solid #f7dc6f;border-radius:6px;"
+            f"padding:.55rem .8rem;margin:.2rem 0;font-size:.9em;color:#7d6608;'>"
+            f"📍 <b>Zona:</b> {_msg}</div>")
     # Toggle de imágenes — SIEMPRE apagado por defecto (Excel más liviano y rápido).
     img_toggle = widgets.Checkbox(
         value=False, indent=False,
@@ -362,6 +371,8 @@ def _run_api_ui(eng):
     opt_children = [widgets.HTML("<h4 style='margin:.6rem 0 .3rem;'>⚙️ Opciones</h4>")]
     if zone_dd is not None:
         opt_children.append(zone_dd)
+    elif zone_note is not None:
+        opt_children.append(zone_note)
     opt_children.append(img_toggle)
     options_box = widgets.VBox(opt_children)
 

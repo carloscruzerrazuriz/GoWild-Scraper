@@ -23,6 +23,8 @@ OUTPUT_COLS = _b.OUTPUT_COLS
 
 RETAILER_NAME = "Yolito"
 USES_BROWSER = False
+ZONE_NOTE = ("Yolito (ASP.NET) muestra **precio único** en su catálogo; la comuna sólo "
+             "aplica al despacho. Por eso no hay selector de zona.")
 BASE = "https://www.yolito.cl"
 _MAX_PAGES = 80          # tope de seguridad por subcategoría
 _PER_PAGE = 36           # cards por página (para detectar última página)

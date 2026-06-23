@@ -20,6 +20,10 @@ OUTPUT_COLS = _b.OUTPUT_COLS
 
 RETAILER_NAME = "Ferrobal"
 USES_BROWSER = False
+ZONE_NOTE = ("Ferrobal (WooCommerce) tiene **precio único**: Woo no maneja price-list "
+             "por zona; la comuna sólo aplica al despacho en el checkout. Por eso no "
+             "hay selector de zona. Nota: el catálogo Woo no expone la marca del "
+             "producto en el listado → la columna Marca puede salir vacía.")
 BASE = "https://ferrobal.cl/wp-json/wc/store/v1"
 SITE = "https://ferrobal.cl"
 

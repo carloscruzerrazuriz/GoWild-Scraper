@@ -18,6 +18,10 @@ OUTPUT_COLS = _b.OUTPUT_COLS
 
 RETAILER_NAME = "PuntoMaestro"
 USES_BROWSER = False
+ZONE_NOTE = ("PuntoMaestro (VTEX) tiene **precio único nacional**: se verificó que la "
+             "región VTEX devuelve el mismo precio para RM/Antofagasta/Punta Arenas "
+             "(la ubicación sólo afecta despacho y stock, no el precio). Por eso no hay "
+             "selector de zona — sería un control que no cambia nada.")
 BASE = "https://www.puntomaestro.cl"
 
 _PAGE = 50          # máximo permitido por VTEX en una ventana _from/_to

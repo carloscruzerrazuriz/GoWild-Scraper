@@ -34,6 +34,44 @@ OUTPUT_COLS = [
     "% Descuento", "URL",
 ]
 
+# ── Filtro "Construcción" (para el modo combinado / barridos enfocados) ───────
+# Mauro usa sobre todo las categorías de construcción de cada retailer. Como cada
+# sitio nombra distinto sus secciones, se filtra por palabras clave del NOMBRE de
+# sección (acento-insensible). Es transparente y editable: si una sección queda mal
+# clasificada, ajustar estas listas. EXCLUDE gana sobre INCLUDE.
+_CONSTR_INCLUDE = [
+    "construc", "obra gruesa", "cemento", "mortero", "hormigon", "arido", "acero",
+    "fierro", "perfil", "metalcon", "madera", "tablero", "ladrillo", "bloque",
+    "pastelon", "albanil", "fijacion", "tornillo", "clavo", "aislac", "aislant",
+    "techumbre", "techo", "zinc", "tabique", "terminacion", "revestimiento", "siding",
+    "policarbonato", "malla", "alambre", "plancha", "pintura", "piso", "ceramic",
+    "caneria", "tuberia", "fitting", "gasfiter", "plomeria", "ferreteria", "herramienta",
+    "quincalleria", "adhesivo", "sellante", "silicona", "yeso", "drenaje", "moldura",
+    "soldador", "puerta", "ventana", "aditivo", "cubierta", "material",
+]
+_CONSTR_EXCLUDE = [
+    "jardin", "agricola", "agro", "automotriz", "hogar", "electrohogar", "piscina",
+    "accesorios para mueble", "muebleria de cocina", "decorac", "aseo", "embalaje",
+    "embajaje", "mudanza", "outlet", "cyber", "marcas", "coleccion", "especial",
+    "bloqueados", "eliminar", "departamento", "volante", "pila", "linterna", "cocina",
+    "bano", "seguridad", "iluminacion", "calefaccion", "ventilacion", "filtros de agua",
+    "equipamiento", "carros", "bombas", "generadores", "reparaciones", "interruptores",
+    "conductores", "cajas de distribucion", "canalizacion", "alargadores",
+]
+
+
+def _ascii(s):
+    import unicodedata
+    return unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
+
+
+def is_construction_section(name):
+    """True si el NOMBRE de sección parece de construcción (EXCLUDE gana sobre INCLUDE)."""
+    n = _ascii(name)
+    if any(x in n for x in _CONSTR_EXCLUDE):
+        return False
+    return any(x in n for x in _CONSTR_INCLUDE)
+
 _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 _CTX = ssl.create_default_context()

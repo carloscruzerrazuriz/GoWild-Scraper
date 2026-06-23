@@ -29,6 +29,13 @@ OUTPUT_COLS = _b.OUTPUT_COLS
 
 RETAILER_NAME = "Prodalam"
 USES_BROWSER = True
+ZONE_NOTE = ("Prodalam muestra **precio único nacional** en su catálogo; la sucursal/"
+             "'office' sólo aplica a stock/despacho. Por eso no hay selector de zona. "
+             "Nota: este retailer usa navegador (Angular), así que es más lento; y la "
+             "marca sólo aparece cuando el producto la trae.")
+ZONE_NOTE = ("Prodalam muestra **precio único nacional** en su catálogo; la sucursal "
+             "('office') sólo afecta stock/retiro. Por eso no hay selector de zona. "
+             "Nota: este retailer usa navegador (Angular) → es más lento que el resto.")
 BASE = "https://www.prodalam.cl"
 _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
