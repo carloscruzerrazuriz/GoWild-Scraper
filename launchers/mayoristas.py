@@ -421,7 +421,7 @@ def run():
             resume_panel.children = []
             return
         children = [widgets.HTML(
-            "<h4 style='margin:.8rem 0 .3rem;'>Runs interrumpidos (podes reanudar):</h4>"
+            "<h4 style='margin:.8rem 0 .3rem;'>Runs interrumpidos (puedes reanudar):</h4>"
         )]
         for cp_path, data in unfinished:
             meta = data

@@ -156,9 +156,9 @@ def run():
     padding:1.2rem 1.5rem;border-radius:12px;margin-bottom:1rem;font-family:sans-serif;'>
       <h2 style='margin:0;color:white;'>🗂️ Ferni — Maestra Sección Sodimac</h2>
       <p style='margin:.3rem 0 0;color:rgba(255,255,255,.92);font-size:.95rem;'>
-        Elegí secciones/subcategorías y las recorremos completas. Las puertas (y
+        Elige secciones/subcategorías y las recorremos completas. Las puertas (y
         cualquier producto con medidas) salen con <b>una fila por medida</b> y su
-        <b>precio exacto</b>. Checkpoints en Drive: si se corta, podés reanudar.
+        <b>precio exacto</b>. Checkpoints en Drive: si se corta, puedes reanudar.
       </p>
     </div>
     <style>
@@ -229,7 +229,7 @@ def run():
         layout=widgets.Layout(width="500px"), style={"description_width": "initial"})
     custom_box = widgets.VBox(
         [widgets.HTML("<b>Categoría personalizada:</b><br>"
-                      "<span style='font-size:.85em;color:#666;'>Pegá una URL de listado "
+                      "<span style='font-size:.85em;color:#666;'>Pega una URL de listado "
                       "de Sodimac (no funcionan URLs con <code>isLanding=true</code>).</span>"),
          custom_url_input, custom_name_input],
         layout=widgets.Layout(display="none", margin="6px 0"))
@@ -289,7 +289,7 @@ def run():
             return
         if not secs:
             with load_status:
-                clear_output(); print("❌ No se pudieron leer las secciones. Esperá unos segundos e intentá de nuevo.")
+                clear_output(); print("❌ No se pudieron leer las secciones. Espera unos segundos e intenta de nuevo.")
             load_btn.disabled = False
             return
         state["sections"] = secs
@@ -349,7 +349,7 @@ def run():
             state["selected_stores"] = preset
         n = len(state["selected_stores"])
         store_eta.value = (f"<span style='color:#27ae60'>✓ {n} tienda(s)</span>" if n
-                           else "<span style='color:#c0392b'>⚠️ Seleccioná al menos 1 tienda</span>")
+                           else "<span style='color:#c0392b'>⚠️ Selecciona al menos 1 tienda</span>")
         _update_run_summary()
 
     preset_radio.observe(_update_stores, "value")
@@ -396,7 +396,7 @@ def run():
                 f"border-radius:6px;margin:.4rem 0;font-size:.95em;'>"
                 f"📋 Vas a recorrer <b>{n_sc}</b> subcategoría(s) en <b>{n_st}</b> tienda(s). "
                 f"<span style='color:#b9770e;'>Recorrer secciones completas puede tardar; "
-                f"si se corta, podés reanudar desde el checkpoint.</span></div>")
+                f"si se corta, puedes reanudar desde el checkpoint.</span></div>")
             run_btn.disabled = False
         else:
             run_summary.value = ""
@@ -541,7 +541,7 @@ def run():
             with result_out:
                 display(HTML(f"<div style='background:#ffe4e4;border:1px solid #c0392b;"
                              f"padding:.9rem;border-radius:8px;'>❌ Error: {e}<br>"
-                             f"<small>El checkpoint quedó guardado: podés reanudar.</small></div>"))
+                             f"<small>El checkpoint quedó guardado: puedes reanudar.</small></div>"))
                 import traceback; traceback.print_exc()
         finally:
             state["running"] = False

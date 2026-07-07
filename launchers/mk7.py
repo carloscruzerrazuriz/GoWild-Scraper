@@ -267,7 +267,7 @@ def run():
       <h2 style='margin:0;color:white;'>🏷️ MK7 — Buscador unificado de SKUs</h2>
       <p style='margin:.3rem 0 0;color:rgba(255,255,255,.9);font-size:.95rem;'>
         Sodimac · Falabella · Construmart en un sólo colab.
-        Subí un Excel con tus SKUs y detectamos automáticamente la tienda.
+        Sube un Excel con tus SKUs y detectamos automáticamente la tienda.
       </p>
     </div>
     <style>
@@ -418,7 +418,7 @@ def run():
                 "<b style='font-size:1.05em;'>❌ Sólo se permite UNA tienda por archivo.</b><br>"
                 f"Encontré SKUs en <b>{len(det['cols_with_data'])} columnas</b>: {cols_msg}.<br>"
                 "<br>Por favor:<br>"
-                "1. Vaciá las columnas de los retailers que NO querés scrapear.<br>"
+                "1. Vacía las columnas de los retailers que NO quieres scrapear.<br>"
                 "2. Volvé a subir el archivo.<br>"
                 "<small style='color:#666;'>(Para procesar varias tiendas, corré el MK7 una vez por cada una.)</small>"
                 "</div>"
@@ -484,7 +484,7 @@ def run():
         widgets.HTML(
             "<div style='background:#e8f5e9;border:1px solid #66bb6a;padding:.5rem;"
             "border-radius:6px;margin:.3rem 0;font-size:.9em;'>"
-            "💡 <b>Formato unificado</b>: completá <b>SOLO UNA</b> columna de SKU "
+            "💡 <b>Formato unificado</b>: completa <b>SOLO UNA</b> columna de SKU "
             "(<code>SKU Sodimac</code> O <code>SKU Falabella</code> O <code>SKU Construmart</code>). "
             "Si completás más de una, el sistema te avisará.</div>"
         ),
@@ -576,7 +576,7 @@ def run():
                 state["selected_stores"] = preset
             n = len(state["selected_stores"])
             store_eta.value = (
-                "<span style='color:#c0392b'>⚠️ Seleccioná al menos 1</span>" if n == 0
+                "<span style='color:#c0392b'>⚠️ Selecciona al menos 1</span>" if n == 0
                 else f"<span style='color:#27ae60'>✓ {n} tienda(s) seleccionada(s)</span>"
             )
             _update_run_summary()
@@ -953,9 +953,9 @@ def run():
     def on_run_clicked(_):
         if state["running"]: return
         if not state.get("retailer"):
-            with result_out: clear_output(); print("⚠️ Subí un archivo válido primero."); return
+            with result_out: clear_output(); print("⚠️ Sube un archivo válido primero."); return
         if not state.get("selected_stores"):
-            with result_out: clear_output(); print("⚠️ Seleccioná al menos una tienda."); return
+            with result_out: clear_output(); print("⚠️ Selecciona al menos una tienda."); return
         if not state.get("skus_with_meta"):
             with result_out: clear_output(); print("⚠️ El archivo no tiene SKUs."); return
         state["running"] = True
@@ -1071,7 +1071,7 @@ def run():
             resume_panel.layout.display = "none"
             return
         children = [widgets.HTML(
-            "<h4 style='margin:.4rem 0;'>⏯️ Runs interrumpidos (podés reanudar)</h4>"
+            "<h4 style='margin:.4rem 0;'>⏯️ Runs interrumpidos (puedes reanudar)</h4>"
         )]
         for run_id, meta in runs:
             ret = meta.get("retailer", "?")

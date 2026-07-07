@@ -249,7 +249,7 @@ def run():
         widgets.HTML(
             "<div style='background:#efebe9;border:1px solid #bcaaa4;padding:.5rem;"
             "border-radius:6px;margin:.3rem 0;font-size:.9em;'>"
-            "💡 Completá la columna <code>SKU Sodimac</code> con los SKU de las "
+            "💡 Completa la columna <code>SKU Sodimac</code> con los SKU de las "
             "<b>medidas específicas</b> de las puertas. <code>SKU Easy</code> y "
             "<code>Desc. Producto</code> son opcionales.</div>"),
         download_format_btn,
@@ -320,7 +320,7 @@ def run():
             state["selected_stores"] = preset
         n = len(state["selected_stores"])
         store_eta.value = (
-            "<span style='color:#c0392b'>⚠️ Seleccioná al menos 1</span>" if n == 0
+            "<span style='color:#c0392b'>⚠️ Selecciona al menos 1</span>" if n == 0
             else f"<span style='color:#27ae60'>✓ {n} tienda(s) seleccionada(s)</span>")
         _update_run_summary()
 

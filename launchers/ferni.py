@@ -23,7 +23,7 @@ def run():
     padding:1.2rem 1.5rem;border-radius:12px;margin-bottom:1rem;font-family:sans-serif;'>
       <h2 style='margin:0;color:white;'>🚪 Ferni — Sodimac (puertas y más)</h2>
       <p style='margin:.3rem 0 0;color:rgba(255,255,255,.92);font-size:.95rem;'>
-        Elegí qué herramienta usar. Ambas resuelven el selector de medidas
+        Elige qué herramienta usar. Ambas resuelven el selector de medidas
         (medida + precio exacto por variante).
       </p>
     </div>
@@ -31,7 +31,7 @@ def run():
 
     selector = widgets.RadioButtons(
         options=[
-            ("🔍  Buscador por SKU — subís un Excel con SKUs de puertas", "sku"),
+            ("🔍  Buscador por SKU — subes un Excel con SKUs de puertas", "sku"),
             ("🗂️  Maestra Sección — recorre categorías completas de Sodimac", "maestra"),
         ],
         value="sku",
@@ -42,8 +42,8 @@ def run():
     desc = widgets.HTML(
         "<div style='background:#eaf4fb;border:1px solid #aed6f1;padding:.6rem;"
         "border-radius:6px;margin:.4rem 0;font-size:.9em;'>"
-        "<b>🔍 Buscador por SKU</b>: ya sabés qué puertas querés (subís sus SKU).<br>"
-        "<b>🗂️ Maestra Sección</b>: querés barrer una sección entera (ej. Puertas) "
+        "<b>🔍 Buscador por SKU</b>: ya sabes qué puertas quieres (subes sus SKU).<br>"
+        "<b>🗂️ Maestra Sección</b>: quieres barrer una sección entera (ej. Puertas) "
         "y traer todo con sus medidas y precios.</div>")
     cont_btn = widgets.Button(description="Continuar →", button_style="success",
                               layout=widgets.Layout(width="200px"))

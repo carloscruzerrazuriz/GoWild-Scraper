@@ -46,7 +46,7 @@ def run():
     padding:1.2rem 1.5rem;border-radius:12px;margin-bottom:1rem;font-family:sans-serif;'>
       <h2 style='margin:0;color:white;'>🛰️ Competidores — Inteligencia de precios</h2>
       <p style='margin:.3rem 0 0;color:rgba(255,255,255,.92);font-size:.95rem;'>
-        Elegí un retailer y recorré sus categorías. Salida unificada para comparar
+        Elige un retailer y recorre sus categorías. Salida unificada para comparar
         precios lado a lado. <b>Uso interno.</b>
       </p>
     </div>
@@ -132,7 +132,7 @@ def _run_api_ui(eng):
     padding:1rem 1.4rem;border-radius:12px;margin-bottom:1rem;font-family:sans-serif;'>
       <h2 style='margin:0;color:white;'>🛰️ Competidores · {retailer}</h2>
       <p style='margin:.3rem 0 0;color:rgba(255,255,255,.92);font-size:.92rem;'>
-        Cargá las secciones, elegí subcategorías y recorré. Extracción por API (rápida).
+        Carga las secciones, elige subcategorías y recorre. Extracción por API (rápida).
       </p>
     </div>
     <style>

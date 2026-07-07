@@ -254,7 +254,7 @@ def run():
         try: load_btn.disabled = (n == 0)
         except NameError: pass
         if n == 0:
-            store_eta.value = "<span style='color:#c0392b'>⚠️ Seleccioná al menos una tienda</span>"
+            store_eta.value = "<span style='color:#c0392b'>⚠️ Selecciona al menos una tienda</span>"
         else:
             filt = "todos vendedores" if include_non_sodimac.value else "filtro Sodimac"
             store_eta.value = f"<span style='color:#27ae60'>✓ {n} tienda(s) ({filt})</span>"
@@ -313,7 +313,7 @@ def run():
     custom_box = widgets.VBox(
         [widgets.HTML("<b>Categoría personalizada:</b>"
                       "<br><span style='font-size:.85em;color:#666;'>"
-                      "Pegá una URL de listado de Sodimac (no funcionan URLs con <code>isLanding=true</code>)."
+                      "Pega una URL de listado de Sodimac (no funcionan URLs con <code>isLanding=true</code>)."
                       "</span>"),
          custom_url_input, custom_name_input],
         layout=widgets.Layout(display="none", margin="6px 0"),
@@ -383,7 +383,7 @@ def run():
     def on_load_clicked(_):
         if not state["selected_stores"]:
             with load_status:
-                clear_output(); print("⚠️ Seleccioná al menos una tienda primero.")
+                clear_output(); print("⚠️ Selecciona al menos una tienda primero.")
             return
         load_btn.disabled = True
         with load_status:
@@ -399,7 +399,7 @@ def run():
             return
         if not secs:
             with load_status:
-                clear_output(); print("❌ No se pudieron leer las secciones. Esperá unos segundos e intentá de nuevo.")
+                clear_output(); print("❌ No se pudieron leer las secciones. Espera unos segundos e intenta de nuevo.")
             load_btn.disabled = False
             return
         state["sections"] = secs
@@ -627,7 +627,7 @@ def run():
             return
         if not state["selected_stores"]:
             with result_out:
-                clear_output(); print("⚠️ Seleccioná al menos una tienda.")
+                clear_output(); print("⚠️ Selecciona al menos una tienda.")
             return
         # Si venimos de "Continuar", usamos sección/subcats del meta, no de los widgets.
         pending = state.get("pending_resume")
@@ -645,7 +645,7 @@ def run():
             name = (custom_name_input.value or "").strip()
             if not url.startswith("http"):
                 with result_out:
-                    clear_output(); print("⚠️ Pegá una URL válida (debe empezar con http).")
+                    clear_output(); print("⚠️ Pega una URL válida (debe empezar con http).")
                 return
             if "isLanding=true" in url:
                 with result_out:
@@ -658,13 +658,13 @@ def run():
         else:
             if not section_dd.value:
                 with result_out:
-                    clear_output(); print("⚠️ Cargá las secciones primero.")
+                    clear_output(); print("⚠️ Carga las secciones primero.")
                 return
             section_name, _ = section_dd.value
             subcats = get_selected_subcats()
             if not subcats:
                 with result_out:
-                    clear_output(); print("⚠️ Marcá al menos una subcategoría.")
+                    clear_output(); print("⚠️ Marca al menos una subcategoría.")
                 return
         state["running"] = True
         _set_running_ui(True)
@@ -907,7 +907,7 @@ def run():
         toggle.on_click(_toggle)
         header = widgets.HTML(
             "<span style='color:#888;font-size:.85em;'>"
-            "Reanudá el que corresponda o descartá los que ya no necesités.</span>"
+            "Reanuda el que corresponda o descarta los que ya no necesites.</span>"
         )
         resume_panel.children = [toggle, header, cards_box]
 
@@ -1154,7 +1154,7 @@ def run():
         try: load_btn.disabled = (n == 0)
         except NameError: pass
         if n == 0:
-            store_eta.value = "<span style='color:#c0392b'>⚠️ Seleccioná al menos una zona</span>"
+            store_eta.value = "<span style='color:#c0392b'>⚠️ Selecciona al menos una zona</span>"
         else:
             filt = "filtro Falabella" if only_falabella_cb.value else "todos vendedores"
             store_eta.value = f"<span style='color:#27ae60'>✓ {n} zona(s) ({filt})</span>"
@@ -1282,7 +1282,7 @@ def run():
 
         subcat_container.children = [
             widgets.HTML("<b>Subcategorías</b> — agrupadas. El checkbox a la izquierda "
-                         "marca/desmarca todo el grupo. Hacé click en el título para expandir."),
+                         "marca/desmarca todo el grupo. Haz click en el título para expandir."),
             widgets.HBox([btn_all_subs, btn_none_subs], layout=widgets.Layout(gap="8px")),
             widgets.VBox(group_rows),
         ]
@@ -1307,7 +1307,7 @@ def run():
     def on_load_clicked(_):
         if not state["selected_stores"]:
             with load_status:
-                clear_output(); print("⚠️ Seleccioná al menos una zona primero.")
+                clear_output(); print("⚠️ Selecciona al menos una zona primero.")
             return
         load_btn.disabled = True
         with load_status:
@@ -1534,7 +1534,7 @@ def run():
             return
         if not state["selected_stores"]:
             with result_out:
-                clear_output(); print("⚠️ Seleccioná al menos una zona.")
+                clear_output(); print("⚠️ Selecciona al menos una zona.")
             return
         pending = state.get("pending_resume")
         if pending:
@@ -1549,13 +1549,13 @@ def run():
         else:
             if not section_dd.value:
                 with result_out:
-                    clear_output(); print("⚠️ Cargá las secciones primero.")
+                    clear_output(); print("⚠️ Carga las secciones primero.")
                 return
             section_name, _ = section_dd.value
             subcats = get_selected_subcats()
             if not subcats:
                 with result_out:
-                    clear_output(); print("⚠️ Marcá al menos una subcategoría.")
+                    clear_output(); print("⚠️ Marca al menos una subcategoría.")
                 return
         state["running"] = True
         _set_running_ui(True)
@@ -2037,7 +2037,7 @@ def run():
         try: load_btn.disabled = (n == 0)
         except NameError: pass
         if n == 0:
-            store_eta.value = "<span style='color:#c0392b'>⚠️ Seleccioná al menos una tienda</span>"
+            store_eta.value = "<span style='color:#c0392b'>⚠️ Selecciona al menos una tienda</span>"
         else:
             store_eta.value = f"<span style='color:#27ae60'>✓ {n} tienda(s)</span>"
         try: _update_run_summary()
@@ -2126,7 +2126,7 @@ def run():
     def on_load_clicked(_):
         if not state["selected_stores"]:
             with load_status:
-                clear_output(); print("⚠️ Seleccioná al menos una tienda primero.")
+                clear_output(); print("⚠️ Selecciona al menos una tienda primero.")
             return
         load_btn.disabled = True
         with load_status:
@@ -2142,7 +2142,7 @@ def run():
             return
         if not secs:
             with load_status:
-                clear_output(); print("❌ No se pudieron leer las secciones. Esperá unos segundos e intentá de nuevo.")
+                clear_output(); print("❌ No se pudieron leer las secciones. Espera unos segundos e intenta de nuevo.")
             load_btn.disabled = False
             return
         state["sections"] = secs
@@ -2316,7 +2316,7 @@ def run():
             return
         if not state["selected_stores"]:
             with result_out:
-                clear_output(); print("⚠️ Seleccioná al menos una tienda.")
+                clear_output(); print("⚠️ Selecciona al menos una tienda.")
             return
         pending = state.get("pending_resume")
         if pending:
@@ -2331,13 +2331,13 @@ def run():
         else:
             if not section_dd.value:
                 with result_out:
-                    clear_output(); print("⚠️ Cargá las secciones primero.")
+                    clear_output(); print("⚠️ Carga las secciones primero.")
                 return
             section_name, _ = section_dd.value
             subcats = get_selected_subcats()
             if not subcats:
                 with result_out:
-                    clear_output(); print("⚠️ Marcá al menos una subcategoría.")
+                    clear_output(); print("⚠️ Marca al menos una subcategoría.")
                 return
         state["running"] = True
         _set_running_ui(True)
@@ -2600,6 +2600,6 @@ def run():
 
     _btn.on_click(_on_confirm)
 
-    display(widgets.HTML("<h3>Elegi la tienda y presiona Confirmar</h3>"))
+    display(widgets.HTML("<h3>Elige la tienda y presiona Confirmar</h3>"))
     display(widgets.VBox([_radio, _btn]))
     display(_out)
