@@ -98,171 +98,15 @@ ALL_STORES = [
 
 # ─────────────────────────────────────────  Zone (autocomplete)  ───────────
 
-async def _type_autocomplete(page: Page, placeholder: str, value: str) -> bool:
-    sel = f'input[placeholder="{placeholder}"]'
-    for _ in range(20):
-        st = await page.evaluate(
-            """(s) => { const i = document.querySelector(s);
-                return i ? {present: true, disabled: i.disabled, hidden: i.offsetHeight === 0} : {present: false}; }""",
-            sel,
-        )
-        if st.get("present") and not st.get("disabled") and not st.get("hidden"):
-            break
-        await page.wait_for_timeout(500)
-    else:
-        return False
-    inp = page.locator(sel).first
-    await page.evaluate("""() => {
-        document.querySelectorAll(
-            '[id*="onetrust"], [class*="onetrust"], '
-            + '[id^="cookie"], [class^="cookie"], '
-            + '#CybotCookiebotDialog, [class*="CookieConsent"]'
-        ).forEach(e => { try { e.remove(); } catch (_) {} });
-    }""")
-    try:
-        await inp.click(timeout=5000)
-    except Exception:
-        try:
-            await inp.click(force=True, timeout=5000)
-        except Exception:
-            await page.evaluate("(s) => { const el = document.querySelector(s); if (el) el.focus(); }", sel)
-    try:
-        await inp.fill("", timeout=5000)
-    except Exception:
-        await page.evaluate("(s) => { const el = document.querySelector(s); if (el) el.value = ''; }", sel)
-    await page.keyboard.type(value, delay=60)
+# ── Zona: delegado al sistema ÚNICO compartido (engines/_zone_sodimac.py) ──
+# Antes MK7 tenía su propia set_zone/warmup/_type_autocomplete; ahora las 3
+# herramientas Sodimac comparten la misma implementación robusta (verificación
+# por cookie+label, backspace-retry, warmup anti-Cloudflare integrado).
+from engines import _zone_sodimac as _zone
 
-    # Buscar match exacto/endsWith/contains. Si no aparece, ir borrando chars
-    # del final (suggestions se relistan con menos filtro) hasta encontrar el
-    # target real. Esto resuelve el caso "Calama" (Sodimac filtra agresivo y
-    # esconde la opción correcta si tipeas el nombre completo).
-    PICK_JS = """(target) => {
-        const lis = [...document.querySelectorAll('li[class*="Autocomplete-module_suggestion"]')]
-            .filter(e => e.offsetHeight > 0 && (e.innerText || '').trim());
-        const norm = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-        const t = norm(target);
-        const exact = lis.find(e => norm(e.innerText.trim()) === t);
-        const endsWith = lis.find(e => {
-            const x = norm(e.innerText.trim());
-            return x === t || x.endsWith(" - " + t);
-        });
-        const contains = lis.find(e => norm(e.innerText.trim()).includes(t));
-        const pick = exact || endsWith || contains;
-        if (!pick) return null;
-        const fire = (type) => pick.dispatchEvent(new MouseEvent(type, {bubbles: true, cancelable: true, view: window}));
-        fire('mousedown'); fire('mouseup'); fire('click');
-        return pick.innerText.trim();
-    }"""
-
-    picked = None
-    chars_left = len(value)
-    while chars_left >= 3:
-        for _ in range(12):
-            await page.wait_for_timeout(250)
-            has = await page.evaluate(
-                """() => [...document.querySelectorAll('li[class*="Autocomplete-module_suggestion"]')]
-                        .some(e => e.offsetHeight > 0 && (e.innerText||'').trim())"""
-            )
-            if has:
-                break
-        picked = await page.evaluate(PICK_JS, value)
-        if picked:
-            break
-        await page.keyboard.press("Backspace")
-        chars_left -= 1
-        await page.wait_for_timeout(400)
-
-    if picked:
-        await page.wait_for_timeout(700)
-        return True
-    return False
-
-
-async def set_zone(page: Page, region: str, comuna: str) -> bool:
-    await page.goto(f"{BASE_URL}/", wait_until="domcontentloaded", timeout=60000)
-    await page.wait_for_timeout(2000)
-
-    # Descartar banners de cookies/consentimiento (OneTrust et al.) que tapan el
-    # botón de ubicación. En Colab/headless interceptan el click y set_zone fallaba
-    # de forma intermitente. Misma robustez que la set_zone de Maestra (fix 8710e7d).
-    await page.evaluate("""() => {
-        const btns = [...document.querySelectorAll('button, a')];
-        const acc = btns.find(b => /acept|entend|de acuerdo|cerrar/i.test((b.innerText||'').trim()) && b.offsetHeight > 0);
-        if (acc) { try { acc.click(); } catch(e){} }
-        document.querySelectorAll('#onetrust-banner-sdk, [class*="cookie"], [class*="Modal"], [class*="overlay"], [data-testid="overlay"]')
-            .forEach(o => { try { o.remove(); } catch(e){} });
-    }""")
-
-    # Polling: el botón de ubicación puede tardar en aparecer (hasta ~10s) según la
-    # velocidad de la VM / latencia a sodimac.cl. Antes se esperaba 2s fijos y se
-    # abortaba — causa raíz de los "falló set_zone" en máquinas más lentas.
-    opened = False
-    for _ in range(20):
-        opened = await page.evaluate("""() => {
-            // 1) Selector específico nuevo (UI 2026): p dentro de Zone-module_zone-lable
-            const p = document.querySelector('p[class*="Zone-module_zone-lable"]');
-            if (p && p.offsetHeight > 0) { p.click(); return true; }
-            // 2) Fallback al método legacy: buscar elemento con texto exacto
-            const el = [...document.querySelectorAll('*')].find(e => {
-                const t = (e.innerText || '').trim();
-                return e.offsetHeight > 0 && (
-                    t === 'Ingresa tu ubicación'
-                    || /^Entrega en/.test(t)
-                    || /^Despacha en/.test(t)
-                    || /^Envía a/.test(t)
-                );
-            });
-            if (el) { el.click(); return true; } return false;
-        }""")
-        if opened:
-            break
-        await page.wait_for_timeout(500)
-    if not opened:
-        return False
-    await page.wait_for_timeout(1500)
-    if not await _type_autocomplete(page, "Ingresa una Región", region):
-        return False
-    if not await _type_autocomplete(page, "Ingresa una Comuna", comuna):
-        return False
-    clicked = await page.evaluate("""() => {
-        const btn = [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Guardar' && !b.disabled);
-        if (btn) { btn.click(); return true; } return false;
-    }""")
-    if not clicked:
-        return False
-    await page.wait_for_timeout(3000)
-    # Verificar que la zona quedó REALMENTE fijada (no 'éxito' silencioso): tras
-    # Guardar la etiqueta pasa a "Entrega en {Comuna}". Si sigue el placeholder
-    # o no contiene la comuna pedida, set_zone falló → el orquestador reintenta
-    # (en vez de scrapear con la zona anterior/equivocada). Verificado en vivo
-    # 2026-06-09: el label muestra la comuna (con NBSP), de ahí la normalización.
-    try:
-        verified = await page.evaluate("""(comuna) => {
-            const norm = s => (s||'').toLowerCase().normalize('NFD')
-                .replace(/[\\u0300-\\u036f]/g, '').replace(/\\u00a0/g, ' ').trim();
-            const p = document.querySelector('p[class*="Zone-module_zone-lable"]');
-            const label = norm(p ? p.innerText : '');
-            if (!label || /ingresa tu ubicaci/.test(label)) return false;
-            return label.includes(norm(comuna));
-        }""", comuna)
-    except Exception:
-        verified = False
-    return bool(verified)
-
-
-# ─────────────────────────────────────────  Warm-up  ───────────────────────
-
-async def warmup_session(page: Page) -> None:
-    """Visit a couple of pages so Sodimac fixes the session tokens.
-
-    Without this, /buscar?Ntt=... served from a cold Chromium returns the
-    home page instead of the product grid (anti-bot heuristic).
-    """
-    await page.goto(f"{BASE_URL}/", wait_until="domcontentloaded", timeout=60000)
-    await page.wait_for_timeout(3500)
-    for _ in range(3):
-        await page.evaluate("window.scrollBy(0, 350)")
-        await page.wait_for_timeout(700)
+warmup_session     = _zone.warmup_session
+_type_autocomplete = _zone._type_autocomplete
+set_zone           = _zone.set_zone
 
 
 # ─────────────────────────────────────────  Batch search  ──────────────────
@@ -666,9 +510,9 @@ async def search_skus_mk6(
             if progress_cb:
                 progress_cb({"event": "zone_start", "store": store, "n_skus": n_skus})
 
-            ok = await set_zone(page, store["region"], store["comuna"])
+            ok = await set_zone(page, store["region"], store["comuna"], warmup=False)
             if not ok:
-                ok = await set_zone(page, store["region"], store["comuna"])
+                ok = await set_zone(page, store["region"], store["comuna"], warmup=False)
             if not ok:
                 if progress_cb:
                     progress_cb({"event": "zone_end", "store": store,

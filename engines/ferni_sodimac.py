@@ -118,139 +118,14 @@ def stores_by_ids(ids):
 # ─────────────────────────────────────────  Zone (autocomplete)  ───────────
 # (idéntico al MK7 sodimac_engine — infra probada, no tocar sin testear)
 
-async def _type_autocomplete(page: Page, placeholder: str, value: str) -> bool:
-    sel = f'input[placeholder="{placeholder}"]'
-    for _ in range(20):
-        st = await page.evaluate(
-            """(s) => { const i = document.querySelector(s);
-                return i ? {present: true, disabled: i.disabled, hidden: i.offsetHeight === 0} : {present: false}; }""",
-            sel,
-        )
-        if st.get("present") and not st.get("disabled") and not st.get("hidden"):
-            break
-        await page.wait_for_timeout(500)
-    else:
-        return False
-    inp = page.locator(sel).first
-    await page.evaluate("""() => {
-        document.querySelectorAll(
-            '[id*="onetrust"], [class*="onetrust"], '
-            + '[id^="cookie"], [class^="cookie"], '
-            + '#CybotCookiebotDialog, [class*="CookieConsent"]'
-        ).forEach(e => { try { e.remove(); } catch (_) {} });
-    }""")
-    try:
-        await inp.click(timeout=5000)
-    except Exception:
-        try:
-            await inp.click(force=True, timeout=5000)
-        except Exception:
-            await page.evaluate("(s) => { const el = document.querySelector(s); if (el) el.focus(); }", sel)
-    try:
-        await inp.fill("", timeout=5000)
-    except Exception:
-        await page.evaluate("(s) => { const el = document.querySelector(s); if (el) el.value = ''; }", sel)
-    await page.keyboard.type(value, delay=60)
+# ── Zona: delegado al sistema ÚNICO compartido (engines/_zone_sodimac.py) ──
+# Antes Ferni tenía su copia propia; ahora comparte la misma set_zone robusta
+# (verificación cookie+label, backspace-retry, warmup) que MK7 y Sección.
+from engines import _zone_sodimac as _zone
 
-    PICK_JS = """(target) => {
-        const lis = [...document.querySelectorAll('li[class*="Autocomplete-module_suggestion"]')]
-            .filter(e => e.offsetHeight > 0 && (e.innerText || '').trim());
-        const norm = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-        const t = norm(target);
-        const exact = lis.find(e => norm(e.innerText.trim()) === t);
-        const endsWith = lis.find(e => {
-            const x = norm(e.innerText.trim());
-            return x === t || x.endsWith(" - " + t);
-        });
-        const contains = lis.find(e => norm(e.innerText.trim()).includes(t));
-        const pick = exact || endsWith || contains;
-        if (!pick) return null;
-        const fire = (type) => pick.dispatchEvent(new MouseEvent(type, {bubbles: true, cancelable: true, view: window}));
-        fire('mousedown'); fire('mouseup'); fire('click');
-        return pick.innerText.trim();
-    }"""
-
-    picked = None
-    chars_left = len(value)
-    while chars_left >= 3:
-        for _ in range(12):
-            await page.wait_for_timeout(250)
-            has = await page.evaluate(
-                """() => [...document.querySelectorAll('li[class*="Autocomplete-module_suggestion"]')]
-                        .some(e => e.offsetHeight > 0 && (e.innerText||'').trim())"""
-            )
-            if has:
-                break
-        picked = await page.evaluate(PICK_JS, value)
-        if picked:
-            break
-        await page.keyboard.press("Backspace")
-        chars_left -= 1
-        await page.wait_for_timeout(400)
-
-    if picked:
-        await page.wait_for_timeout(700)
-        return True
-    return False
-
-
-async def set_zone(page: Page, region: str, comuna: str) -> bool:
-    await page.goto(f"{BASE_URL}/", wait_until="domcontentloaded", timeout=60000)
-    await page.wait_for_timeout(2000)
-
-    await page.evaluate("""() => {
-        const btns = [...document.querySelectorAll('button, a')];
-        const acc = btns.find(b => /acept|entend|de acuerdo|cerrar/i.test((b.innerText||'').trim()) && b.offsetHeight > 0);
-        if (acc) { try { acc.click(); } catch(e){} }
-        document.querySelectorAll('#onetrust-banner-sdk, [class*="cookie"], [class*="Modal"], [class*="overlay"], [data-testid="overlay"]')
-            .forEach(o => { try { o.remove(); } catch(e){} });
-    }""")
-
-    opened = False
-    for _ in range(20):
-        opened = await page.evaluate("""() => {
-            const p = document.querySelector('p[class*="Zone-module_zone-lable"]');
-            if (p && p.offsetHeight > 0) { p.click(); return true; }
-            const el = [...document.querySelectorAll('*')].find(e => {
-                const t = (e.innerText || '').trim();
-                return e.offsetHeight > 0 && (
-                    t === 'Ingresa tu ubicación'
-                    || /^Entrega en/.test(t)
-                    || /^Despacha en/.test(t)
-                    || /^Envía a/.test(t)
-                );
-            });
-            if (el) { el.click(); return true; } return false;
-        }""")
-        if opened:
-            break
-        await page.wait_for_timeout(500)
-    if not opened:
-        return False
-    await page.wait_for_timeout(1500)
-    if not await _type_autocomplete(page, "Ingresa una Región", region):
-        return False
-    if not await _type_autocomplete(page, "Ingresa una Comuna", comuna):
-        return False
-    await page.evaluate("""() => {
-        const btn = [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Guardar' && !b.disabled);
-        if (btn) btn.click();
-    }""")
-    await page.wait_for_timeout(3000)
-    return True
-
-
-# ─────────────────────────────────────────  Warm-up  ───────────────────────
-
-async def warmup_session(page: Page) -> None:
-    """Visita un par de páginas para que Sodimac fije los tokens de sesión.
-    Sin esto, /buscar?Ntt=... desde un Chromium frío devuelve el home en vez de
-    la grilla (heurística anti-bot)."""
-    await page.goto(f"{BASE_URL}/", wait_until="domcontentloaded", timeout=60000)
-    await page.wait_for_timeout(3500)
-    for _ in range(3):
-        await page.evaluate("window.scrollBy(0, 350)")
-        await page.wait_for_timeout(700)
+warmup_session     = _zone.warmup_session
+_type_autocomplete = _zone._type_autocomplete
+set_zone           = _zone.set_zone
 
 
 # ─────────────────────────────────────────  Batch search (puertas)  ────────
@@ -513,9 +388,9 @@ async def search_doors(
             if progress_cb:
                 progress_cb({"event": "zone_start", "store": store, "n_skus": n_skus})
 
-            ok = await set_zone(page, store["region"], store["comuna"])
+            ok = await set_zone(page, store["region"], store["comuna"], warmup=False)
             if not ok:
-                ok = await set_zone(page, store["region"], store["comuna"])
+                ok = await set_zone(page, store["region"], store["comuna"], warmup=False)
             if not ok:
                 if progress_cb:
                     progress_cb({"event": "zone_end", "store": store,

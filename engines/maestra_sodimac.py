@@ -166,130 +166,16 @@ QSTYLE = QStyle([
 
 # ─────────────────────────────────────────  Zone & autocomplete  ───────────
 
-async def _type_autocomplete(page, placeholder, value):
-    sel = f'input[placeholder="{placeholder}"]'
-    for _ in range(20):
-        st = await page.evaluate(
-            """(s) => { const i = document.querySelector(s);
-                return i ? {present: true, disabled: i.disabled, hidden: i.offsetHeight === 0} : {present: false}; }""",
-            sel,
-        )
-        if st.get("present") and not st.get("disabled") and not st.get("hidden"):
-            break
-        await page.wait_for_timeout(500)
-    else:
-        return False
-    inp = page.locator(sel).first
-    # Remove cookie/consent banners that often intercept clicks in headless (esp. Colab).
-    # Only target known consent UIs — do NOT touch the geofinder modal itself.
-    await page.evaluate("""() => {
-        document.querySelectorAll(
-            '[id*="onetrust"], [class*="onetrust"], '
-            + '[id^="cookie"], [class^="cookie"], '
-            + '#CybotCookiebotDialog, [class*="CookieConsent"]'
-        ).forEach(e => { try { e.remove(); } catch (_) {} });
-    }""")
-    # Try a normal click; if intercepted, fall back to a forced click; if that also fails,
-    # focus the input directly via DOM to avoid actionability waits.
-    try:
-        await inp.click(timeout=5000)
-    except Exception:
-        try:
-            await inp.click(force=True, timeout=5000)
-        except Exception:
-            await page.evaluate(
-                "(s) => { const el = document.querySelector(s); if (el) el.focus(); }",
-                sel,
-            )
-    try:
-        await inp.fill("", timeout=5000)
-    except Exception:
-        await page.evaluate(
-            "(s) => { const el = document.querySelector(s); if (el) el.value = ''; }",
-            sel,
-        )
-    await page.keyboard.type(value, delay=60)
-    for _ in range(12):
-        await page.wait_for_timeout(250)
-        has = await page.evaluate(
-            """() => [...document.querySelectorAll('li[class*="Autocomplete-module_suggestion"]')]
-                    .some(e => e.offsetHeight > 0 && (e.innerText||'').trim())"""
-        )
-        if has:
-            break
-    picked = await page.evaluate(
-        """(target) => {
-            const lis = [...document.querySelectorAll('li[class*="Autocomplete-module_suggestion"]')]
-                .filter(e => e.offsetHeight > 0 && (e.innerText || '').trim());
-            const norm = (s) => s.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
-            const t = norm(target);
-            const exact = lis.find(e => norm(e.innerText.trim()) === t);
-            const contains = lis.find(e => norm(e.innerText.trim()).includes(t));
-            const pick = exact || contains || lis[0];
-            if (!pick) return null;
-            const fire = (type) => pick.dispatchEvent(new MouseEvent(type, {bubbles: true, cancelable: true, view: window}));
-            fire('mousedown'); fire('mouseup'); fire('click');
-            return pick.innerText.trim();
-        }""", value)
-    if picked:
-        await page.wait_for_timeout(700); return True
-    return False
+# ── Zona: delegado al sistema ÚNICO compartido (engines/_zone_sodimac.py) ──
+# Antes Sección tenía su propia set_zone SIN verificación (devolvía True a
+# ciegas → podía scrapear con la zona equivocada) y SIN warmup. Ahora usa la
+# misma implementación robusta que MK7/Ferni: verifica por cookie+label y hace
+# warmup anti-Cloudflare. Mismos nombres → cero cambios en los call-sites.
+from engines import _zone_sodimac as _zone
 
-
-async def set_zone(page, region, comuna):
-    await page.goto(f"{BASE_URL}/", wait_until="domcontentloaded", timeout=60000)
-    await page.wait_for_timeout(2000)
-
-    # Descartar banners de cookies/consentimiento que tapan el botón de ubicación.
-    await page.evaluate("""() => {
-        const kill = (el) => { try { el.click(); } catch(e){} };
-        // Botones típicos de aceptar cookies en Sodimac/OneTrust
-        const btns = [...document.querySelectorAll('button, a')];
-        const acc = btns.find(b => /acept|entend|de acuerdo|cerrar/i.test((b.innerText||'').trim()) && b.offsetHeight > 0);
-        if (acc) kill(acc);
-        // Remover overlays/modales que bloqueen clicks
-        document.querySelectorAll('#onetrust-banner-sdk, [class*="cookie"], [class*="Modal"], [class*="overlay"], [data-testid="overlay"]')
-            .forEach(o => { try { o.remove(); } catch(e){} });
-    }""")
-
-    # Polling: el botón de ubicación puede tardar en aparecer (hasta ~10s).
-    opened = False
-    for _ in range(20):
-        opened = await page.evaluate("""() => {
-            const el = [...document.querySelectorAll('*')].find(e => {
-                const t = (e.innerText || '').trim();
-                return e.offsetHeight > 0 && (t === 'Ingresa tu ubicación' || /^Entrega en/.test(t));
-            });
-            if (el) { el.click(); return true; } return false;
-        }""")
-        if opened:
-            break
-        await page.wait_for_timeout(500)
-    if not opened:
-        return False
-    await page.wait_for_timeout(1500)
-    if not await _type_autocomplete(page, "Ingresa una Región", region): return False
-    if not await _type_autocomplete(page, "Ingresa una Comuna", comuna): return False
-    await page.evaluate("""() => {
-        const btn = [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Guardar' && !b.disabled);
-        if (btn) btn.click();
-    }""")
-    await page.wait_for_timeout(3000)
-    return True
-
-
-async def set_zone_with_retry(page, region, comuna, retries=2):
-    """set_zone con N reintentos. Devuelve True si alguno tuvo éxito."""
-    for attempt in range(retries + 1):
-        try:
-            ok = await set_zone(page, region, comuna)
-        except Exception:
-            ok = False
-        if ok:
-            return True
-        if attempt < retries:
-            await page.wait_for_timeout(1500 * (attempt + 1))
-    return False
+_type_autocomplete  = _zone._type_autocomplete
+set_zone            = _zone.set_zone
+set_zone_with_retry = _zone.set_zone_with_retry
 
 
 # ─────────────────────────────────────────  Discovery  ─────────────────────
