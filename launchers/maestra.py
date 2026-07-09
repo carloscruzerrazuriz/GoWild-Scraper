@@ -94,78 +94,31 @@ def run():
             }, timeout=5, allow_redirects=True)
         except Exception:
             pass  # silencioso — no romper el flow del usuario
-    # Fallback PARTIAL_DIR: si no estamos en Colab o Drive mount falla,
-    # usar filesystem efímero local del Colab/notebook.
-    PARTIAL_DIR = Path.cwd() / "_sodimac_partials"
-    PARTIAL_DIR.mkdir(parents=True, exist_ok=True)
     state = {"sections": None, "selected_stores": [], "running": False, "pending_resume": None}
 
-    # ─── Checkpoint en Google Drive + autolimpieza de 12 h ───────────────
+    # ─── Checkpoints (módulo compartido engines/_checkpoints.py) ─────────
+    from engines import _checkpoints as _ckpts
     import os as _os, time as _time, json as _json
-    PARTIAL_TTL_SECONDS = 12 * 3600  # 12 horas
-    if IN_COLAB:
-        try:
-            from google.colab import drive as _drive
-            if not _os.path.isdir("/content/drive/MyDrive"):
-                _drive.mount("/content/drive", force_remount=False)
-            _drv = Path("/content/drive/MyDrive/sodimac_scraper_partials")
-            _drv.mkdir(parents=True, exist_ok=True)
-            PARTIAL_DIR = _drv  # redirige PartialWriter al Drive
-        except Exception as _e:
-            print(f"⚠️ No se pudo montar Drive ({_e}); usando filesystem efímero.")
+    PARTIAL_TTL_SECONDS = _ckpts.DEFAULT_TTL_SECS
+    PARTIAL_DIR, _ckpt_ephemeral = _ckpts.resolve_dir(
+        in_colab=IN_COLAB, drive_subdir="sodimac_scraper_partials", local_name="_sodimac_partials")
+    _ckpts.purge_expired(PARTIAL_DIR)  # TTL 12h por RUN (protege el meta al reanudar)
+    if _ckpt_ephemeral:
+        display(HTML(_ckpts.ephemeral_warning_html("Maestra Sodimac")))
 
-    # Limpieza inicial: borra checkpoints con más de 12 h de vida
-    _now = _time.time()
-    for _glob in ("*.jsonl", "*.meta.json", "*.done.tsv"):
-        for _p in PARTIAL_DIR.glob(_glob):
-            try:
-                if _now - _p.stat().st_mtime > PARTIAL_TTL_SECONDS:
-                    _p.unlink()
-            except Exception:
-                pass
-
-    def _meta_path(run_id): return PARTIAL_DIR / f"{run_id}.meta.json"
-    def _done_path(run_id): return PARTIAL_DIR / f"{run_id}.done.tsv"
-
+    def _meta_path(run_id): return _ckpts.meta_path(PARTIAL_DIR, run_id)
+    def _done_path(run_id): return _ckpts.done_path(PARTIAL_DIR, run_id)
     def _write_meta(run_id, payload):
-        _meta_path(run_id).write_text(_json.dumps(payload, ensure_ascii=False, indent=2))
-
+        _ckpts.write_meta(PARTIAL_DIR, run_id, payload)
+        _ckpts.ensure_jsonl(PARTIAL_DIR, run_id)  # jsonl EAGER (fix #3)
     def _append_done(run_id, store_id, subcat_name):
-        with open(_done_path(run_id), "a", encoding="utf-8") as f:
-            f.write(f"{store_id}\t{subcat_name}\n")
-
+        _ckpts.append_done(PARTIAL_DIR, run_id, store_id, subcat_name)
     def _read_done(run_id):
-        p = _done_path(run_id)
-        if not p.exists(): return set()
-        done = set()
-        for line in p.read_text(encoding="utf-8").splitlines():
-            parts = line.split("\t")
-            if len(parts) == 2:
-                done.add((parts[0], parts[1]))
-        return done
-
+        return _ckpts.read_done(PARTIAL_DIR, run_id)
     def _cleanup_run(run_id):
-        for p in (PARTIAL_DIR / f"{run_id}.jsonl", _meta_path(run_id), _done_path(run_id)):
-            try: p.unlink()
-            except Exception: pass
-
+        _ckpts.cleanup_run(PARTIAL_DIR, run_id)
     def _find_resumable_all():
-        """Devuelve lista [(run_id, meta, prior_rows, done_set), ...] de partials vigentes, más reciente primero."""
-        out = []
-        metas = sorted(PARTIAL_DIR.glob("*.meta.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-        for m in metas:
-            run_id = m.name[:-len(".meta.json")]
-            jsonl = PARTIAL_DIR / f"{run_id}.jsonl"
-            if not jsonl.exists():
-                continue
-            try:
-                meta = _json.loads(m.read_text(encoding="utf-8"))
-                prior_rows = PartialWriter.load(jsonl)
-                done = _read_done(run_id)
-                out.append((run_id, meta, prior_rows, done))
-            except Exception:
-                continue
-        return out
+        return _ckpts.list_runs(PARTIAL_DIR, unfinished_only=True)
 
     display(HTML("""
     <div style='background:linear-gradient(90deg,#0277bd,#01579b);color:white;
@@ -484,7 +437,7 @@ def run():
         # En reanudación, abrimos el JSONL en modo append para no borrar las filas previas.
         partial = PartialWriter.__new__(PartialWriter)
         partial.path = PARTIAL_DIR / f"{run_id}.jsonl"
-        partial._fh = open(partial.path, "a" if prior_rows else "w", encoding="utf-8")
+        partial._fh = open(partial.path, "a", encoding="utf-8")
         partial.count = len(prior_rows or [])
         # Reset UI residual de runs anteriores
         store_bar.value = 0; store_bar.description = "Tiendas:"
@@ -1001,71 +954,29 @@ def run():
             pass  # silencioso — no romper el flow del usuario
     state = {"sections": None, "selected_stores": [], "running": False, "pending_resume": None}
 
-    # ─── Checkpoint en Google Drive + autolimpieza de 12 h ───────────────
+    # ─── Checkpoints (módulo compartido engines/_checkpoints.py) ─────────
+    from engines import _checkpoints as _ckpts
     import os as _os, time as _time, json as _json
-    PARTIAL_TTL_SECONDS = 12 * 3600  # 12 horas
-    if IN_COLAB:
-        try:
-            from google.colab import drive as _drive
-            if not _os.path.isdir("/content/drive/MyDrive"):
-                _drive.mount("/content/drive", force_remount=False)
-            _drv = Path("/content/drive/MyDrive/falabella_scraper_partials")
-            _drv.mkdir(parents=True, exist_ok=True)
-            PARTIAL_DIR = _drv  # redirige PartialWriter al Drive
-        except Exception as _e:
-            print(f"⚠️ No se pudo montar Drive ({_e}); usando filesystem efímero.")
+    PARTIAL_TTL_SECONDS = _ckpts.DEFAULT_TTL_SECS
+    PARTIAL_DIR, _ckpt_ephemeral = _ckpts.resolve_dir(
+        in_colab=IN_COLAB, drive_subdir="falabella_scraper_partials", local_name="_falabella_partials")
+    _ckpts.purge_expired(PARTIAL_DIR)  # TTL 12h por RUN (protege el meta al reanudar)
+    if _ckpt_ephemeral:
+        display(HTML(_ckpts.ephemeral_warning_html("Maestra Falabella")))
 
-    # Limpieza inicial: borra checkpoints con más de 12 h de vida
-    _now = _time.time()
-    for _glob in ("*.jsonl", "*.meta.json", "*.done.tsv"):
-        for _p in PARTIAL_DIR.glob(_glob):
-            try:
-                if _now - _p.stat().st_mtime > PARTIAL_TTL_SECONDS:
-                    _p.unlink()
-            except Exception:
-                pass
-
-    def _meta_path(run_id): return PARTIAL_DIR / f"{run_id}.meta.json"
-    def _done_path(run_id): return PARTIAL_DIR / f"{run_id}.done.tsv"
-
+    def _meta_path(run_id): return _ckpts.meta_path(PARTIAL_DIR, run_id)
+    def _done_path(run_id): return _ckpts.done_path(PARTIAL_DIR, run_id)
     def _write_meta(run_id, payload):
-        _meta_path(run_id).write_text(_json.dumps(payload, ensure_ascii=False, indent=2))
-
+        _ckpts.write_meta(PARTIAL_DIR, run_id, payload)
+        _ckpts.ensure_jsonl(PARTIAL_DIR, run_id)  # jsonl EAGER (fix #3)
     def _append_done(run_id, store_id, subcat_name):
-        with open(_done_path(run_id), "a", encoding="utf-8") as f:
-            f.write(f"{store_id}\t{subcat_name}\n")
-
+        _ckpts.append_done(PARTIAL_DIR, run_id, store_id, subcat_name)
     def _read_done(run_id):
-        p = _done_path(run_id)
-        if not p.exists(): return set()
-        done = set()
-        for line in p.read_text(encoding="utf-8").splitlines():
-            parts = line.split("\t")
-            if len(parts) == 2:
-                done.add((parts[0], parts[1]))
-        return done
-
+        return _ckpts.read_done(PARTIAL_DIR, run_id)
     def _cleanup_run(run_id):
-        for p in (PARTIAL_DIR / f"{run_id}.jsonl", _meta_path(run_id), _done_path(run_id)):
-            try: p.unlink()
-            except Exception: pass
-
+        _ckpts.cleanup_run(PARTIAL_DIR, run_id)
     def _find_resumable_all():
-        out = []
-        metas = sorted(PARTIAL_DIR.glob("*.meta.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-        for m in metas:
-            run_id = m.name[:-len(".meta.json")]
-            jsonl = PARTIAL_DIR / f"{run_id}.jsonl"
-            if not jsonl.exists():
-                continue
-            try:
-                meta = _json.loads(m.read_text(encoding="utf-8"))
-                prior_rows = PartialWriter.load(jsonl)
-                done = _read_done(run_id)
-                out.append((run_id, meta, prior_rows, done))
-            except Exception:
-                continue
-        return out
+        return _ckpts.list_runs(PARTIAL_DIR, unfinished_only=True)
 
     display(HTML("""
     <div style='background:linear-gradient(90deg,#2e7d32,#1b5e20);color:white;
@@ -1407,7 +1318,7 @@ def run():
         prior_done = prior_done or set()
         partial = PartialWriter.__new__(PartialWriter)
         partial.path = PARTIAL_DIR / f"{run_id}.jsonl"
-        partial._fh = open(partial.path, "a" if prior_rows else "w", encoding="utf-8")
+        partial._fh = open(partial.path, "a", encoding="utf-8")
         partial.count = len(prior_rows or [])
         store_bar.value = 0; store_bar.description = "Zonas:"
         subcat_bar.value = 0; subcat_bar.description = "Subcat:"
@@ -1856,70 +1767,29 @@ def run():
     state = {"sections": None, "selected_stores": [], "running": False, "pending_resume": None,
              "all_stores": None}
 
-    # ─── Checkpoint en Google Drive + autolimpieza de 12 h ───────────────
+    # ─── Checkpoints (módulo compartido engines/_checkpoints.py) ─────────
+    from engines import _checkpoints as _ckpts
     import os as _os, time as _time, json as _json
-    PARTIAL_TTL_SECONDS = 12 * 3600  # 12 horas
-    if IN_COLAB:
-        try:
-            from google.colab import drive as _drive
-            if not _os.path.isdir("/content/drive/MyDrive"):
-                _drive.mount("/content/drive", force_remount=False)
-            _drv = Path("/content/drive/MyDrive/construmart_scraper_partials")
-            _drv.mkdir(parents=True, exist_ok=True)
-            PARTIAL_DIR = _drv
-        except Exception as _e:
-            print(f"⚠️ No se pudo montar Drive ({_e}); usando filesystem efímero.")
+    PARTIAL_TTL_SECONDS = _ckpts.DEFAULT_TTL_SECS
+    PARTIAL_DIR, _ckpt_ephemeral = _ckpts.resolve_dir(
+        in_colab=IN_COLAB, drive_subdir="construmart_scraper_partials", local_name="_construmart_partials")
+    _ckpts.purge_expired(PARTIAL_DIR)  # TTL 12h por RUN (protege el meta al reanudar)
+    if _ckpt_ephemeral:
+        display(HTML(_ckpts.ephemeral_warning_html("Maestra Construmart")))
 
-    _now = _time.time()
-    for _glob in ("*.jsonl", "*.meta.json", "*.done.tsv"):
-        for _p in PARTIAL_DIR.glob(_glob):
-            try:
-                if _now - _p.stat().st_mtime > PARTIAL_TTL_SECONDS:
-                    _p.unlink()
-            except Exception:
-                pass
-
-    def _meta_path(run_id): return PARTIAL_DIR / f"{run_id}.meta.json"
-    def _done_path(run_id): return PARTIAL_DIR / f"{run_id}.done.tsv"
-
+    def _meta_path(run_id): return _ckpts.meta_path(PARTIAL_DIR, run_id)
+    def _done_path(run_id): return _ckpts.done_path(PARTIAL_DIR, run_id)
     def _write_meta(run_id, payload):
-        _meta_path(run_id).write_text(_json.dumps(payload, ensure_ascii=False, indent=2))
-
+        _ckpts.write_meta(PARTIAL_DIR, run_id, payload)
+        _ckpts.ensure_jsonl(PARTIAL_DIR, run_id)  # jsonl EAGER (fix #3)
     def _append_done(run_id, store_id, subcat_name):
-        with open(_done_path(run_id), "a", encoding="utf-8") as f:
-            f.write(f"{store_id}\t{subcat_name}\n")
-
+        _ckpts.append_done(PARTIAL_DIR, run_id, store_id, subcat_name)
     def _read_done(run_id):
-        p = _done_path(run_id)
-        if not p.exists(): return set()
-        done = set()
-        for line in p.read_text(encoding="utf-8").splitlines():
-            parts = line.split("\t")
-            if len(parts) == 2:
-                done.add((parts[0], parts[1]))
-        return done
-
+        return _ckpts.read_done(PARTIAL_DIR, run_id)
     def _cleanup_run(run_id):
-        for p in (PARTIAL_DIR / f"{run_id}.jsonl", _meta_path(run_id), _done_path(run_id)):
-            try: p.unlink()
-            except Exception: pass
-
+        _ckpts.cleanup_run(PARTIAL_DIR, run_id)
     def _find_resumable_all():
-        out = []
-        metas = sorted(PARTIAL_DIR.glob("*.meta.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-        for m in metas:
-            run_id = m.name[:-len(".meta.json")]
-            jsonl = PARTIAL_DIR / f"{run_id}.jsonl"
-            if not jsonl.exists():
-                continue
-            try:
-                meta = _json.loads(m.read_text(encoding="utf-8"))
-                prior_rows = PartialWriter.load(jsonl)
-                done = _read_done(run_id)
-                out.append((run_id, meta, prior_rows, done))
-            except Exception:
-                continue
-        return out
+        return _ckpts.list_runs(PARTIAL_DIR, unfinished_only=True)
 
     display(HTML("""
     <div style='background:linear-gradient(90deg,#c89004,#8a5d00);color:white;
@@ -2220,7 +2090,7 @@ def run():
         prior_done = prior_done or set()
         partial = PartialWriter.__new__(PartialWriter)
         partial.path = PARTIAL_DIR / f"{run_id}.jsonl"
-        partial._fh = open(partial.path, "a" if prior_rows else "w", encoding="utf-8")
+        partial._fh = open(partial.path, "a", encoding="utf-8")
         partial.count = len(prior_rows or [])
         store_bar.value = 0; store_bar.description = "Tiendas:"
         subcat_bar.value = 0; subcat_bar.description = "Subcat:"

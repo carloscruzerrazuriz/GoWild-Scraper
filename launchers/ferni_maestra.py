@@ -65,90 +65,41 @@ def run():
         except Exception:
             pass
 
-    # ─── Checkpoints en Google Drive + autolimpieza 12 h ───────────────
-    PARTIAL_TTL = 12 * 3600
-    PARTIAL_DIR = OUTPUT_DIR / "_ferni_maestra_partials"
-    if IN_COLAB:
-        try:
-            from google.colab import drive as _drive
-            if not _os.path.isdir("/content/drive/MyDrive"):
-                _drive.mount("/content/drive", force_remount=False)
-            PARTIAL_DIR = Path("/content/drive/MyDrive/ferni_maestra_partials")
-        except Exception as _e:
-            print(f"⚠️ No se pudo montar Drive ({_e}); checkpoints en filesystem efímero.")
-    PARTIAL_DIR.mkdir(parents=True, exist_ok=True)
+    # ─── Checkpoints (módulo compartido engines/_checkpoints.py) ─────────
+    from engines import _checkpoints as _ckpts
+    PARTIAL_TTL = _ckpts.DEFAULT_TTL_SECS
+    PARTIAL_DIR, _ckpt_ephemeral = _ckpts.resolve_dir(
+        in_colab=IN_COLAB, drive_subdir="ferni_maestra_partials",
+        local_name="_ferni_maestra_partials")
+    _ckpts.purge_expired(PARTIAL_DIR)  # TTL 12h por RUN (protege el meta al reanudar)
+    if _ckpt_ephemeral:
+        display(HTML(_ckpts.ephemeral_warning_html("Ferni Maestra")))
 
-    _now = _time.time()
-    for _glob in ("*.jsonl", "*.meta.json", "*.done.tsv"):
-        for _p in PARTIAL_DIR.glob(_glob):
-            try:
-                if _now - _p.stat().st_mtime > PARTIAL_TTL:
-                    _p.unlink()
-            except Exception:
-                pass
-
-    def _meta_path(rid): return PARTIAL_DIR / f"{rid}.meta.json"
-    def _jsonl_path(rid): return PARTIAL_DIR / f"{rid}.jsonl"
-    def _done_path(rid): return PARTIAL_DIR / f"{rid}.done.tsv"
+    def _meta_path(rid): return _ckpts.meta_path(PARTIAL_DIR, rid)
+    def _jsonl_path(rid): return _ckpts.jsonl_path(PARTIAL_DIR, rid)
+    def _done_path(rid): return _ckpts.done_path(PARTIAL_DIR, rid)
 
     def _write_meta(rid, payload):
-        try:
-            _meta_path(rid).write_text(_json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
-        except Exception:
-            pass
+        _ckpts.write_meta(PARTIAL_DIR, rid, payload)
+        _ckpts.ensure_jsonl(PARTIAL_DIR, rid)  # jsonl EAGER (fix #3)
 
     def _append_row(rid, row):
-        try:
-            with open(_jsonl_path(rid), "a", encoding="utf-8") as f:
-                f.write(_json.dumps(row, ensure_ascii=False, default=str) + "\n")
-        except Exception:
-            pass
+        _ckpts.append_row(PARTIAL_DIR, rid, row)
 
     def _load_rows(rid):
-        rows, p = [], _jsonl_path(rid)
-        if p.exists():
-            for line in p.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if line:
-                    try: rows.append(_json.loads(line))
-                    except Exception: pass
-        return rows
+        return _ckpts.load_rows(PARTIAL_DIR, rid)
 
     def _append_done(rid, store_id, subcat_url):
-        try:
-            with open(_done_path(rid), "a", encoding="utf-8") as f:
-                f.write(f"{store_id}\t{subcat_url}\n")
-        except Exception:
-            pass
+        _ckpts.append_done(PARTIAL_DIR, rid, store_id, subcat_url)
 
     def _read_done(rid):
-        done, p = set(), _done_path(rid)
-        if p.exists():
-            for line in p.read_text(encoding="utf-8").splitlines():
-                parts = line.split("\t")
-                if len(parts) == 2:
-                    done.add((parts[0], parts[1]))
-        return done
+        return _ckpts.read_done(PARTIAL_DIR, rid)
 
     def _cleanup_run(rid):
-        for p in (_jsonl_path(rid), _meta_path(rid), _done_path(rid)):
-            try: p.unlink()
-            except Exception: pass
+        _ckpts.cleanup_run(PARTIAL_DIR, rid)
 
     def _find_resumable():
-        out = []
-        for m in sorted(PARTIAL_DIR.glob("*.meta.json"), key=lambda p: p.stat().st_mtime, reverse=True):
-            rid = m.name[:-len(".meta.json")]
-            if not _jsonl_path(rid).exists():
-                continue
-            try:
-                meta = _json.loads(m.read_text(encoding="utf-8"))
-                if meta.get("finished"):
-                    continue
-                out.append((rid, meta, _load_rows(rid), _read_done(rid)))
-            except Exception:
-                continue
-        return out
+        return _ckpts.list_runs(PARTIAL_DIR, unfinished_only=True)
 
     # ─── Header ────────────────────────────────────────────────────────
     display(HTML("""

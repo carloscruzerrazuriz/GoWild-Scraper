@@ -170,95 +170,41 @@ def run():
 
 
 
-    # ─── Checkpoint en Google Drive + autolimpieza de 12 h ───────────────
-    import time as _ckp_time
-    PARTIAL_DIR = OUTPUT_DIR / "mk7_partial_runs"
-    try:
-        if IN_COLAB:
-            from google.colab import drive as _drive
-            try:
-                _drive.mount("/content/drive", force_remount=False)
-            except Exception:
-                pass
-            _drv = Path("/content/drive/MyDrive/mk7_scraper_partials")
-            _drv.mkdir(parents=True, exist_ok=True)
-            PARTIAL_DIR = _drv
-    except Exception:
-        pass
-    PARTIAL_DIR.mkdir(parents=True, exist_ok=True)
+    # ─── Checkpoints (módulo compartido engines/_checkpoints.py) ─────────
+    from engines import _checkpoints as _ckpts
+    PARTIAL_DIR, _ckpt_ephemeral = _ckpts.resolve_dir(
+        in_colab=IN_COLAB, drive_subdir="mk7_scraper_partials",
+        local_name="mk7_partial_runs")
+    _ckpts.purge_expired(PARTIAL_DIR)  # TTL 12h por RUN (protege el meta al reanudar)
+    if _ckpt_ephemeral:
+        display(HTML(_ckpts.ephemeral_warning_html("MK7")))
 
-    _CKPT_TTL_SECS = 12 * 3600
-    try:
-        _now = _ckp_time.time()
-        for _p in list(PARTIAL_DIR.glob("mk7_*.jsonl")) + list(PARTIAL_DIR.glob("mk7_*.meta.json")):
-            try:
-                if _now - _p.stat().st_mtime > _CKPT_TTL_SECS:
-                    _p.unlink()
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    def _ckpt_meta_path(run_id):
-        return PARTIAL_DIR / f"{run_id}.meta.json"
-
-    def _ckpt_jsonl_path(run_id):
-        return PARTIAL_DIR / f"{run_id}.jsonl"
+    def _ckpt_meta_path(run_id):  return _ckpts.meta_path(PARTIAL_DIR, run_id)
+    def _ckpt_jsonl_path(run_id): return _ckpts.jsonl_path(PARTIAL_DIR, run_id)
 
     def _ckpt_save_meta(run_id, meta):
-        try:
-            _ckpt_meta_path(run_id).write_text(
-                _json.dumps(meta, ensure_ascii=False, indent=2, default=str),
-                encoding="utf-8",
-            )
-        except Exception:
-            pass
+        _ckpts.write_meta(PARTIAL_DIR, run_id, meta)
+        _ckpts.ensure_jsonl(PARTIAL_DIR, run_id)  # jsonl EAGER (fix #3)
 
     def _ckpt_append_row(run_id, row):
-        try:
-            with open(_ckpt_jsonl_path(run_id), "a", encoding="utf-8") as fh:
-                fh.write(_json.dumps(row, ensure_ascii=False, default=str) + "\n")
-        except Exception:
-            pass
+        _ckpts.append_row(PARTIAL_DIR, run_id, row)
 
-    def _ckpt_load_rows(run_id):
-        rows = []
-        p = _ckpt_jsonl_path(run_id)
-        if not p.exists(): return rows
-        with open(p, "r", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line: continue
-                try: rows.append(_json.loads(line))
-                except Exception: pass
-        return rows
+    def _ckpt_load_rows(run_id, dedup_keys=None):
+        # dedup_keys evita acumular filas si una tienda se re-scrapeó tras un
+        # corte (fix #5). Sodimac ya colapsa por (sku_input, store_id) en
+        # write_output, pero deduplicamos al cargar por robustez multi-reanudación.
+        return _ckpts.load_rows(PARTIAL_DIR, run_id, dedup_keys=dedup_keys)
 
     def _ckpt_list_unfinished():
-        out = []
-        for mp in sorted(PARTIAL_DIR.glob("mk7_*.meta.json")):
-            try:
-                m = _json.loads(mp.read_text(encoding="utf-8"))
-                if not m.get("finished"):
-                    out.append((mp.stem.replace(".meta",""), m))
-            except Exception:
-                pass
-        return out
+        # Compat: el panel espera 2-tuplas (run_id, meta).
+        return [(rid, meta) for rid, meta, _rows, _done
+                in _ckpts.list_runs(PARTIAL_DIR, unfinished_only=True)]
 
     def _ckpt_discard(run_id):
-        for p in (_ckpt_meta_path(run_id), _ckpt_jsonl_path(run_id)):
-            try:
-                if p.exists(): p.unlink()
-            except Exception: pass
+        _ckpts.cleanup_run(PARTIAL_DIR, run_id)
 
     def _ckpt_mark_finished(run_id):
-        p = _ckpt_meta_path(run_id)
-        if not p.exists(): return
-        try:
-            m = _json.loads(p.read_text(encoding="utf-8"))
-            m["finished"] = True
-            _ckpt_save_meta(run_id, m)
-        except Exception:
-            pass
+        _ckpts.mark_finished(PARTIAL_DIR, run_id)
 
 
     display(HTML("""
@@ -784,7 +730,10 @@ def run():
             meta = _json.loads(_ckpt_meta_path(run_id).read_text(encoding="utf-8"))
             ts = meta.get("ts") or datetime.now().strftime("%Y-%m-%d_%H%M")
             stores_done_ids = set(meta.get("stores_done") or [])
-            prior_rows = _ckpt_load_rows(run_id)
+            # Sodimac: dedup por (store_id, sku_input) para no acumular filas si
+            # una tienda se re-scrapeó tras un corte (fix #5).
+            _dk = ["store_id", "sku_input"] if retailer == "sodimac" else None
+            prior_rows = _ckpt_load_rows(run_id, dedup_keys=_dk)
         else:
             ts = datetime.now().strftime("%Y-%m-%d_%H%M")
             run_id = f"mk7_{retailer}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"

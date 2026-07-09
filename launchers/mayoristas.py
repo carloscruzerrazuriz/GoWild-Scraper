@@ -64,18 +64,29 @@ def run():
     OUTPUT_DIR = Path.cwd()
     # Checkpoints en Google Drive del usuario para que sobrevivan reinicios de la VM.
     # Si no se puede montar Drive (fuera de Colab), cae al filesystem efímero.
-    CHECKPOINT_DIR = OUTPUT_DIR / "_pm_checkpoints"
-    try:
-        if IN_COLAB:
-            from google.colab import drive as _drive
-            if not os.path.isdir("/content/drive/MyDrive"):
-                _drive.mount("/content/drive", force_remount=False)
-            _drv = Path("/content/drive/MyDrive/pm_scraper_checkpoints")
-            _drv.mkdir(parents=True, exist_ok=True)
-            CHECKPOINT_DIR = _drv
-    except Exception as _e:
-        print(f"⚠️ No se pudo montar Drive para checkpoints ({_e}); usando filesystem efímero.")
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    # ─── Checkpoints (dir compartido engines/_checkpoints.py) ────────────
+    # Mantiene su naming propio pm_*.json (+ .jsonl); usa el módulo para el
+    # fallback RUIDOSO de Drive (fix #2) y agrega TTL 12h por RUN (fix #4).
+    from engines import _checkpoints as _ckpts
+    CHECKPOINT_DIR, _ckpt_ephemeral = _ckpts.resolve_dir(
+        in_colab=IN_COLAB, drive_subdir="pm_scraper_checkpoints",
+        local_name="_pm_checkpoints")
+
+    def _pm_purge_expired(ttl=_ckpts.DEFAULT_TTL_SECS):
+        """Borra runs (pm_*.json + su .jsonl) cuyo archivo más nuevo venció."""
+        import time as _t
+        now = _t.time(); groups = {}
+        for p in list(CHECKPOINT_DIR.glob("pm_*.json")) + list(CHECKPOINT_DIR.glob("pm_*.jsonl")):
+            try: mt = p.stat().st_mtime
+            except Exception: continue
+            g = groups.setdefault(p.stem, [0, []])
+            g[0] = max(g[0], mt); g[1].append(p)
+        for _rid, (mt, paths) in groups.items():
+            if now - mt > ttl:
+                for p in paths:
+                    try: p.unlink()
+                    except Exception: pass
+    _pm_purge_expired()
 
     # Engine Sodimac importado desde engines/ (refactor v2.0: ya no se embebe inline).
     # Expone TODO menos los dunders (__name__, __doc__, etc.) — las funciones internas
@@ -90,6 +101,9 @@ def run():
     # ============================================================
     import ipywidgets as widgets
     from IPython.display import display, HTML, clear_output
+
+    if _ckpt_ephemeral:  # Drive no montó → checkpoints efímeros (fix #2: avisar claro)
+        display(HTML(_ckpts.ephemeral_warning_html("Precios Mayoristas")))
 
     VENTAS_MAYOR_BASE = "https://www.sodimac.cl/sodimac-cl/seleccion/ventas-por-mayor?sid=SO_HO_HOM_HBA_409161&store=so_com"
     SECTION_NAME = ""    # Vacio por requerimiento
@@ -653,6 +667,13 @@ def run():
                 with result_out:
                     clear_output()
                     print(f"Excel generado: {out_name}  ({len(all_rows)} filas, {len(stores_done)}/{n_stores} tiendas)")
+                # Excel OK y run completo → borrar el checkpoint (fix #4: antes
+                # quedaban para siempre en Drive). Si fue parcial, se conserva.
+                if ckpt.get("finished"):
+                    for _p in (cp_path, jsonl_path):
+                        try:
+                            if _p.exists(): _p.unlink()
+                        except Exception: pass
                 try:
                     _log_activity(retailer="sodimac",
                                    mode="pm-resume" if is_resume else "pm",
