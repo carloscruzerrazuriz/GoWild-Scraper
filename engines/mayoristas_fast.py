@@ -86,10 +86,34 @@ def _find_results(obj):
     return None
 
 
-def _fetch_results(url, cookie, *, retries=3):
-    """GET `url` con cookie de zona → results[] del __NEXT_DATA__ ([] si nada)."""
-    last = None
-    for _ in range(retries):
+def _find_pagination(obj):
+    """Busca recursivamente el dict `pagination` (trae count/totalPages) del JSON."""
+    if isinstance(obj, dict):
+        p = obj.get("pagination")
+        if isinstance(p, dict) and ("count" in p or "totalPages" in p or "totalPage" in p):
+            return p
+        for v in obj.values():
+            r = _find_pagination(v)
+            if r is not None:
+                return r
+    elif isinstance(obj, list):
+        for x in obj:
+            r = _find_pagination(x)
+            if r is not None:
+                return r
+    return None
+
+
+def _fetch_page(url, cookie, *, retries=4):
+    """GET `url` → (results, total_esperado, ok).
+
+    CLAVE para no truncar en silencio: `ok=False` cuando tras los reintentos NO
+    se pudo leer la página (error de red/Cloudflare/HTML sin __NEXT_DATA__) — es
+    DISTINTO de una página genuinamente vacía (`ok=True, results=[]`). `total` =
+    `pagination.count` (total de productos que Sodimac declara para esa query),
+    usado para verificar completitud. `None` si la página no lo trae.
+    """
+    for attempt in range(retries):
         try:
             req = urllib.request.Request(url, headers={
                 "User-Agent": USER_AGENT, "Cookie": cookie,
@@ -99,12 +123,26 @@ def _fetch_results(url, cookie, *, retries=3):
                 html = r.read().decode("utf-8", "replace")
             m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
             if not m:
-                last = "no __NEXT_DATA__"
-                continue
-            return _find_results(json.loads(m.group(1))) or []
-        except Exception as e:  # noqa: BLE001
-            last = e
-    return []
+                continue  # HTML raro (challenge?) → reintentar, NO tratar como vacío
+            data = json.loads(m.group(1))
+            results = _find_results(data) or []
+            pag = _find_pagination(data) or {}
+            total = pag.get("count")
+            try:
+                total = int(total) if total is not None else None
+            except (TypeError, ValueError):
+                total = None
+            return results, total, True
+        except Exception:  # noqa: BLE001
+            import time as _t
+            _t.sleep(0.6 * (attempt + 1))  # backoff antes de reintentar
+    return [], None, False  # error DURO: el caller lo marca incompleto, no como fin
+
+
+def _fetch_results(url, cookie, *, retries=3):
+    """Compat: solo los results[] (usado por scrape_landing)."""
+    res, _total, _ok = _fetch_page(url, cookie, retries=retries)
+    return res
 
 
 def _price_str(entry, symbol_default="$ "):
@@ -301,24 +339,52 @@ def _subcat_url_with_facet(url, only_sodimac):
 def scrape_subcat(url, cookie, store, section_name, subcat_name, *,
                   wholesale_only=True, only_sodimac=True, on_row=None,
                   max_pages=MAX_PAGES_PER_SUBCAT, seen=None):
-    """Pagina UNA subcategoría por HTTP y devuelve las filas (mayoristas si filtra)."""
+    """Pagina UNA subcategoría por HTTP. Devuelve (rows, status).
+
+    status = {expected, scanned, incomplete, reason, short}.
+
+    COMPLETITUD (criterio corregido 2026-07-15): la única señal FIABLE de
+    truncado es un **error de fetch duro** (`ok=False` tras reintentos) o tocar
+    el tope `MAX_PAGES`. Llegar a una página vacía = fin real de la categoría =
+    **completo por definición**, aunque `pagination.count` diga un número mayor:
+    verificado en vivo que `count` SOBRE-CUENTA ~4% (incluye sponsored/dups/
+    no-listables; la misma Maestra DOM pagina la misma PLP y tendría igual gap).
+    Por eso NO marcamos incompleto por `scanned < count` (daba falsas alarmas en
+    casi toda categoría grande). El gap se expone como `short` (informativo, con
+    tolerancia) pero no dispara reintento ni alarma.
+    """
     rows = []
-    seen = seen if seen is not None else set()
+    seen = seen if seen is not None else set()      # dedup de salida (global)
+    subcat_seen = set()                             # únicos de ESTA categoría
     page_url = _subcat_url_with_facet(url, only_sodimac)
+    expected = None
+    incomplete = False
+    reason = ""
     page_num = 1
     while page_num <= max_pages:
         sep = "&" if "?" in page_url else "?"
         u = page_url if page_num == 1 else f"{page_url}{sep}page={page_num}"
-        res = _fetch_results(u, cookie)
-        if not res:
+        res, total, ok = _fetch_page(u, cookie)
+        if not ok:
+            # Error DURO (no confundir con fin de categoría) → marcar y cortar.
+            incomplete = True
+            reason = f"fetch falló en pág {page_num}"
             break
+        if page_num == 1 and total is not None:
+            expected = total
+        if not res:
+            break  # página genuinamente vacía = fin real de la categoría (completo)
         new_in_page = 0
         for r in res:
             sku = str(r.get("skuId", "")).strip()
-            if not sku or sku in seen:
+            if not sku:
+                continue
+            if sku not in subcat_seen:
+                subcat_seen.add(sku)
+                new_in_page += 1
+            if sku in seen:
                 continue
             seen.add(sku)
-            new_in_page += 1
             if wholesale_only and not is_wholesale(r):
                 continue
             row = row_from_result(r, store)
@@ -327,24 +393,44 @@ def scrape_subcat(url, cookie, store, section_name, subcat_name, *,
             rows.append(row)
             if on_row:
                 on_row(row)
+        # Guarda anti-bucle: si la página no aporta SKUs nuevos, la categoría se
+        # acabó (o el ?page=N se repite/wrappea) → fin real. Es completo, no
+        # incompleto (las páginas de categoría no se solapan como la landing).
         if new_in_page == 0:
             break
         page_num += 1
-    return rows
+    else:
+        incomplete = True
+        reason = f"alcanzó MAX_PAGES ({max_pages})"
+
+    scanned = len(subcat_seen)
+    # `short` = faltó MÁS de una página completa (~50) respecto al total declarado:
+    # señal informativa de que quizá valga revisar, sin ser una alarma de truncado.
+    short = bool(expected is not None and (expected - scanned) > 50)
+    status = {"expected": expected, "scanned": scanned,
+              "incomplete": incomplete, "reason": reason, "short": short}
+    return rows, status
 
 
 def scrape_all_wholesale(cookie, tree, store, *, wholesale_only=True,
                          only_sodimac=True, on_row=None, subcat_cb=None,
-                         max_subcats=None, workers=6):
+                         max_subcats=None, workers=6, report=None):
     """Recorre TODO el árbol por HTTP y devuelve solo los productos con precio mayorista.
 
     Como es HTTP puro (sin navegador), las subcategorías se barren en PARALELO
     con un ThreadPool (`workers`). Cada subcat se pagina secuencialmente por
     dentro; el dedup global entre subcats se hace bajo lock. `workers=1` = modo
-    secuencial. 6 workers es un punto seguro (no gatilla el 429 de Cloudflare).
+    secuencial.
+
+    COMPLETITUD: cada subcat verifica lo escaneado contra el `pagination.count`
+    de Sodimac. Las que quedan INCOMPLETAS (fetch fallido o count menor) se
+    **reintentan una vez de forma secuencial** (menos carga → más robusto). Si
+    tras el reintento siguen cortas, se registran en `report` (lista de dicts)
+    para que el launcher avise al usuario en vez de fingir que terminó.
 
     Args:
-      subcat_cb: callback(i, total, section, subcat, kept, scanned) por subcat.
+      subcat_cb: callback(i, total, section, subcat, kept, scanned, status) por subcat.
+      report: lista opcional; se le agregan las subcats que quedaron incompletas.
       max_subcats: tope opcional (para pruebas rápidas).
     """
     import threading
@@ -358,29 +444,12 @@ def scrape_all_wholesale(cookie, tree, store, *, wholesale_only=True,
     seen_global = set()
     lock = threading.Lock()
     done = {"n": 0}
+    incompletes = []  # (sec, name, url, status)
 
-    def _work(job):
-        sec, name, url = job
-        # Cada subcat usa su propio `seen` local; el filtro global se aplica al
-        # incorporar resultados (bajo lock) para no duplicar entre subcats.
-        local_seen = set()
-        local_rows = scrape_subcat(url, cookie, store, sec, name,
-                                   wholesale_only=wholesale_only,
-                                   only_sodimac=only_sodimac, on_row=None, seen=local_seen)
-        return sec, name, local_rows, len(local_seen)
-
-    if workers <= 1:
-        results_iter = (_work(j) for j in flat)
-    else:
-        ex = ThreadPoolExecutor(max_workers=workers)
-        futs = [ex.submit(_work, j) for j in flat]
-        results_iter = (f.result() for f in as_completed(futs))
-
-    for sec, name, local_rows, scanned in results_iter:
+    def _emit(local_rows):
+        """Incorpora filas al resultado con dedup global (bajo lock). Devuelve kept."""
         kept = 0
         with lock:
-            done["n"] += 1
-            i = done["n"]
             for row in local_rows:
                 sku = row["SKU"]
                 if sku in seen_global:
@@ -390,8 +459,46 @@ def scrape_all_wholesale(cookie, tree, store, *, wholesale_only=True,
                 kept += 1
                 if on_row:
                     on_row(row)
+        return kept
+
+    def _work(job):
+        sec, name, url = job
+        local_rows, status = scrape_subcat(url, cookie, store, sec, name,
+                                            wholesale_only=wholesale_only,
+                                            only_sodimac=only_sodimac,
+                                            on_row=None, seen=set())
+        return sec, name, url, local_rows, status
+
+    if workers <= 1:
+        results_iter = (_work(j) for j in flat)
+    else:
+        ex = ThreadPoolExecutor(max_workers=workers)
+        futs = [ex.submit(_work, j) for j in flat]
+        results_iter = (f.result() for f in as_completed(futs))
+
+    for sec, name, url, local_rows, status in results_iter:
+        kept = _emit(local_rows)
+        with lock:
+            done["n"] += 1
+            i = done["n"]
+        if status.get("incomplete"):
+            incompletes.append((sec, name, url, status))
         if subcat_cb:
-            subcat_cb(i, total, sec, name, kept, scanned)
+            subcat_cb(i, total, sec, name, kept, status.get("scanned", 0), status)
+
+    # ── Reintento secuencial de las incompletas (una pasada, más robusto) ──
+    still_bad = []
+    for sec, name, url, _st in incompletes:
+        retry_rows, status2 = scrape_subcat(url, cookie, store, sec, name,
+                                            wholesale_only=wholesale_only,
+                                            only_sodimac=only_sodimac,
+                                            on_row=None, seen=set())
+        _emit(retry_rows)  # dedup global evita duplicar lo ya capturado
+        if status2.get("incomplete"):
+            still_bad.append({"section": sec, "subcat": name, "url": url, **status2})
+
+    if report is not None:
+        report.extend(still_bad)
     return all_rows
 
 

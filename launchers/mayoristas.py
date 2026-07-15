@@ -297,11 +297,25 @@ def run():
     scope_radio.observe(_update_scope, "value")
     _update_scope()
 
+    # Qué guardar: solo mayoristas (default) o TODO el catálogo (sin filtrar).
+    filter_radio = widgets.RadioButtons(
+        options=["Solo productos con precio mayorista", "Todo el catálogo (sin filtrar)"],
+        value="Solo productos con precio mayorista",
+        description="Qué guardar:",
+        style={"description_width": "initial"},
+        layout=widgets.Layout(width="auto"))
+
+    def _wholesale_only():
+        return filter_radio.value.startswith("Solo")
+
     step2 = widgets.VBox([
-        widgets.HTML("<h4 style='margin:.8rem 0 .3rem;'>Paso 2 - Alcance</h4>"),
+        widgets.HTML("<h4 style='margin:.8rem 0 .3rem;'>Paso 2 - Qué guardar y alcance</h4>"),
         widgets.HTML("<div style='color:#666;font-size:.85em;margin-bottom:.3rem;'>"
-                     "Recorre el catálogo y conserva sólo los productos con <b>precio mayorista</b> "
-                     "(PRECIO+PRO). 'Todo el catálogo' ≈ 9 min por zona.</div>"),
+                     "Recorre el catálogo de Sodimac. Puedes conservar <b>sólo los productos con "
+                     "precio mayorista</b> (PRECIO+PRO) o <b>todo el catálogo</b>. Alcance completo ≈ "
+                     "9 min por zona.</div>"),
+        filter_radio,
+        widgets.HTML("<div style='height:.4rem;'></div>"),
         scope_radio, load_btn, load_status, section_panel, url_panel])
 
     # ─── Paso 3: Reanudacion ────────────────────────────────────
@@ -416,6 +430,7 @@ def run():
             stores_done = set(ckpt.get("stores_done", []))
             sections = ckpt.get("sections")  # None = todas
             url_scope = ckpt.get("url_scope")  # [url, nombre] o None
+            wholesale_only = ckpt.get("wholesale_only", True)
             prior_rows = _load_partial_rows(jsonl_path)
             state["resume_from"] = None
         else:
@@ -427,16 +442,18 @@ def run():
             _us = _url_scope()
             url_scope = list(_us) if _us else None
             sections = None if url_scope else _selected_sections()
+            wholesale_only = _wholesale_only()
             prior_rows = []
             ckpt = {
                 "ts": run_id.replace("pm_", ""),
                 "stores": stores, "stores_done": [], "current_store_id": None,
                 "rows_count": 0, "sections": sections, "url_scope": url_scope,
-                "finished": False,
+                "wholesale_only": wholesale_only, "finished": False,
             }
             _save_checkpoint(cp_path, ckpt)
 
         all_rows = list(prior_rows)
+        incomplete_report = []  # subcats que quedaron cortas tras el reintento
         jf = open(jsonl_path, "a", encoding="utf-8")
 
         n_stores = len(stores)
@@ -487,22 +504,28 @@ def run():
             def _on_row(row):
                 store_rows.append(row)
                 jf.write(json.dumps(row, ensure_ascii=False) + "\n")
-            def _subcat_cb(i, total, sec, name, kept, scanned):
+            _lbl = "Mayoristas" if wholesale_only else "Productos"
+            def _subcat_cb(i, total, sec, name, kept, scanned, status=None):
                 sub_bar.max = total; sub_bar.value = i
                 sub_bar.description = f"Subcats {i}/{total}"
                 _set_pct(sub_pct, i, total)
                 elapsed = time.time() - t0
                 live_metrics.value = (
-                    f"<b>Mayoristas:</b> {len(all_rows)+len(store_rows)}  - "
+                    f"<b>{_lbl}:</b> {len(all_rows)+len(store_rows)}  - "
                     f"<b>Sección:</b> {sec[:20]} / {name[:20]}  - "
                     f"<b>{(len(all_rows)+len(store_rows))/max(elapsed,1)*60:.0f}</b> filas/min")
 
             # scrape_all_wholesale es síncrono (HTTP+ThreadPool). Lo corremos en un
-            # hilo para no bloquear el event loop del notebook.
+            # hilo para no bloquear el event loop del notebook. `report` recoge las
+            # subcats que quedaron incompletas tras el reintento (completitud).
+            store_report = []
             rows = await asyncio.to_thread(
                 _mf.scrape_all_wholesale, cookie, tree, store,
-                wholesale_only=True, only_sodimac=True,
-                on_row=_on_row, subcat_cb=_subcat_cb, workers=WORKERS)
+                wholesale_only=wholesale_only, only_sodimac=True,
+                on_row=_on_row, subcat_cb=_subcat_cb, workers=WORKERS,
+                report=store_report)
+            if store_report:
+                incomplete_report.extend([{"tienda": store["id"], **r} for r in store_report])
 
             all_rows.extend(rows)
             ckpt["rows_count"] = len(all_rows)
@@ -516,8 +539,25 @@ def run():
             ckpt["finished"] = True
             _save_checkpoint(cp_path, ckpt)
 
+        # Aviso de completitud: si alguna categoría quedó corta tras el reintento,
+        # se lista para que el usuario la revise (no se oculta el faltante).
+        if incomplete_report:
+            items = "".join(
+                f"<li>{r.get('tienda','')} · {r.get('section','')} / {r.get('subcat','')}: "
+                f"{r.get('scanned','?')} de {r.get('expected','?')} ({r.get('reason','')})</li>"
+                for r in incomplete_report[:40])
+            with result_out:
+                display(HTML(
+                    "<div style='background:#fdecea;border-left:4px solid #e74c3c;"
+                    "padding:.6rem;margin:.4rem 0;border-radius:4px;'>"
+                    f"<b>⚠️ {len(incomplete_report)} categoría(s) no se pudieron leer completas</b> "
+                    "(error de red/Cloudflare persistente o tope de páginas, aún tras reintentar). "
+                    "Puedes reintentarlas con 'URL personalizada':<ul style='margin:.3rem 0;'>"
+                    f"{items}</ul></div>"))
+
         if all_rows:
-            out_name = f"sodimac_mayoristas_{run_id.replace('pm_','')}.xlsx"
+            _tag = "mayoristas" if wholesale_only else "catalogo"
+            out_name = f"sodimac_{_tag}_{run_id.replace('pm_','')}.xlsx"
             out_path = OUTPUT_DIR / out_name
             try:
                 write_excel(all_rows, str(out_path), columns=_PM_OUTPUT_COLS, with_images=False)
@@ -530,8 +570,9 @@ def run():
                             if _p.exists(): _p.unlink()
                         except Exception: pass
                 try:
+                    _mode = ("pm" if wholesale_only else "catalogo") + ("-resume" if is_resume else "")
                     _log_activity(retailer="sodimac",
-                                   mode="pm-resume" if is_resume else "pm",
+                                   mode=_mode,
                                    n_skus=0, n_stores=n_stores,
                                    n_rows_output=len(all_rows),
                                    n_with_price=sum(1 for r in all_rows if r.get("Precio Mayorista")),
@@ -558,7 +599,9 @@ def run():
                     clear_output(); print(f"write_excel fallo: {e}")
         else:
             with result_out:
-                clear_output(); print("Sin productos con precio mayorista para escribir.")
+                clear_output()
+                print("Sin productos con precio mayorista para escribir." if wholesale_only
+                      else "Sin productos para escribir.")
 
     def _start_scrape():
         if state["running"]:

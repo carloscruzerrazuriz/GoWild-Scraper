@@ -28,14 +28,28 @@ async def main():
     t1 = time.time()
     kept_total = {"k": 0, "s": 0}
 
-    def _subcat_cb(i, total, sec, name, kept, scanned):
+    WHOLESALE = "--all" not in sys.argv  # por defecto solo mayoristas; --all = sin filtrar
+
+    def _subcat_cb(i, total, sec, name, kept, scanned, status=None):
         kept_total["k"] += kept
         kept_total["s"] += scanned
-        print(f"    [{i}/{max_subcats}] {sec[:16]:<16} / {name[:22]:<22}  escaneados={scanned:>4}  mayoristas={kept:>3}")
+        st = status or {}
+        exp = st.get("expected")
+        flag = "  ⚠️ INCOMPLETA" if st.get("incomplete") else ("  ~short" if st.get("short") else "")
+        ok = "" if exp is None else f"  (declara {exp})"
+        print(f"    [{i}/{max_subcats}] {sec[:16]:<16} / {name[:22]:<22}  escaneados={scanned:>4}{ok}  guardados={kept:>3}{flag}")
 
-    rows = mf.scrape_all_wholesale(cookie, tree, STORE, wholesale_only=True,
+    report = []
+    rows = mf.scrape_all_wholesale(cookie, tree, STORE, wholesale_only=WHOLESALE,
                                    only_sodimac=True, subcat_cb=_subcat_cb,
-                                   max_subcats=max_subcats)
+                                   max_subcats=max_subcats, report=report)
+    print(f"\n    Modo: {'SOLO MAYORISTAS' if WHOLESALE else 'TODO EL CATÁLOGO (sin filtrar)'}")
+    if report:
+        print(f"    ⚠️ {len(report)} categoría(s) INCOMPLETAS tras reintento (error de fetch / MAX_PAGES):")
+        for r in report:
+            print(f"       {r['section']} / {r['subcat']}: {r['scanned']}/{r['expected']} ({r['reason']})")
+    else:
+        print("    ✅ Ninguna categoría incompleta (todas llegaron a fin natural de páginas)")
     dt = time.time() - t1
     print(f"\n    escaneados={kept_total['s']} productos  ->  mayoristas={len(rows)}  en {dt:.1f}s")
     if kept_total["s"]:
