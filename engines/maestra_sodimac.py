@@ -180,15 +180,27 @@ set_zone_with_retry = _zone.set_zone_with_retry
 
 # ─────────────────────────────────────────  Discovery  ─────────────────────
 
-async def discover_sections(page):
+async def discover_sections(page, *, include_landing=True):
     """Devuelve lista de (section_name, [(subcat_name, subcat_url), ...]).
 
     Lee sisNavigationMenu.entry.categories del __NEXT_DATA__ de la home y
     aplana cada categoría top-level con sus second_level_categories.
+
+    `include_landing` (default True, desde v2.20): incluir las entradas del menú
+    con `isLanding=true` — se les quita ese parámetro (la URL /lista/CATG.../
+    igual renderiza grilla y hace roll-up de sus descendientes). ANTES se
+    descartaban, y resultó (verificado en vivo 2026-07-15) que esas "Todo X" son
+    justo donde viven categorías ENTERAS: la sección Pisos tenía "Todo Pisos"
+    (isLanding) con Cerámicas/Porcelanatos/Flotantes/Vinílicos/Madera anidados;
+    al descartarla se perdían cientos de productos. Con el árbol expandido puede
+    haber solape entre un "Todo X" y sus hermanas → el consumidor debe deduplicar
+    por SKU (la Maestra Sección y Mayoristas lo hacen; Ferni Maestra NO, por eso
+    ese llama con include_landing=False).
     """
     import json
     from datetime import datetime
-    cache_path = PROJECT_DIR / f"sections_cache_sodimac_{datetime.now().strftime('%Y%m%d')}.json"
+    _scheme = "full" if include_landing else "base"
+    cache_path = PROJECT_DIR / f"sections_cache_sodimac_{_scheme}_{datetime.now().strftime('%Y%m%d')}.json"
     if cache_path.exists():
         try:
             with open(cache_path, "r", encoding="utf-8") as f:
@@ -208,6 +220,9 @@ async def discover_sections(page):
     except Exception:
         return []
 
+    def _strip_landing(u):
+        return re.sub(r'([?&])isLanding=true&?', r'\1', u).rstrip('?&')
+
     sections = []
     seen_names = set()
     for c in cats:
@@ -217,24 +232,37 @@ async def discover_sections(page):
         if re.search(r'campañ|cyber|revancha|servicio|asesor', title, re.I):
             continue
         subs = []
+        seen_urls = set()
         for s in c.get("second_level_categories", []) or []:
             n = (s.get("item_name") or "").strip()
-            u = (s.get("item_url") or "").strip()
-            if n and u and u.startswith("http") and "isLanding=true" not in u:
-                subs.append((n, u))
+            raw = s.get("item_url")
+            u = raw.strip() if isinstance(raw, str) else ""
+            if not (n and u.startswith("http")):
+                continue
+            if "isLanding=true" in u:
+                if not include_landing:
+                    continue           # comportamiento clásico: descartar landings
+                u = _strip_landing(u)  # v2.20: incluir sin el parámetro isLanding
+                if not ("/lista/" in u or "/buscar" in u):
+                    continue           # excluir editorial (/content//articulo/)
+            key = u.split("?")[0].rstrip("/")
+            if key in seen_urls:
+                continue               # dedup por catid (evita subcats repetidas)
+            seen_urls.add(key)
+            subs.append((n, u))
         if not subs:
             continue
         seen_names.add(title)
         sections.append((title, subs))
     sections.sort(key=lambda x: x[0])
-    
+
     if sections:
         try:
             with open(cache_path, "w", encoding="utf-8") as f:
                 json.dump(sections, f, ensure_ascii=False)
         except Exception:
             pass
-            
+
     return sections
 
 

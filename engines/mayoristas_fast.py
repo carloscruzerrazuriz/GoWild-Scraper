@@ -302,69 +302,14 @@ def is_wholesale(r) -> bool:
 async def discover_tree(page):
     """Árbol de categorías para el barrido de mayoristas.
 
-    DIFERENCIA CLAVE con `maestra_sodimac.discover_sections`: esa DESCARTA las
-    entradas del menú con `isLanding=true` — y resultó (verificado en vivo 2026-
-    07-15) que esas entradas "Todo X" son justo donde viven categorías ENTERAS.
-    Ej.: la sección Pisos tenía en el menú "Todo Pisos" (isLanding) con Cerámicas,
-    Porcelanatos, Pisos Flotantes, Vinílicos, Madera/Deck anidados; al descartarla
-    sólo quedaban los accesorios (Mosaicos, Fragües…) y se perdían CIENTOS de
-    productos (Porcelanatos 397, Cerámicas 355, Flotantes 56 con precio Sodimac).
-
-    Fix: NO descartar isLanding — se le quita el parámetro `isLanding=true` (la
-    misma URL /lista/CATG.../ renderiza grilla y hace roll-up de sus descendientes,
-    así que basta el segundo nivel). Se filtra a URLs de listado (`/lista/` o
-    `/buscar`) para excluir /content//articulo/. Dedup por catid. NO toca la
-    `discover_sections` de producción (la Maestra la sigue usando igual).
+    Desde v2.20 delega en `maestra_sodimac.discover_sections(include_landing=True)`
+    — fuente ÚNICA para no divergir. Esa versión incluye las entradas del menú
+    `isLanding=true` ("Todo X"), donde viven categorías enteras (Porcelanatos,
+    Cerámicas, Flotantes…) que la versión clásica descartaba. Se conserva el
+    nombre `discover_tree` por compatibilidad con `open_session` y los tests.
     """
-    import json as _json
-    await page.goto("https://www.sodimac.cl/sodimac-cl/",
-                    wait_until="domcontentloaded", timeout=60000)
-    await page.wait_for_timeout(2500)
-    html = await page.content()
-    m = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', html)
-    if not m:
-        return []
-    try:
-        cats = (_json.loads(m.group(1))["props"]["pageProps"]["serverData"]
-                ["headerData"]["sisNavigationMenu"]["entry"]["categories"])
-    except Exception:
-        return []
-
-    def _strip_landing(u):
-        return re.sub(r'([?&])isLanding=true&?', r'\1', u).rstrip('?&')
-
-    def _is_listing(u):
-        return "/lista/" in u or "/buscar" in u
-
-    sections = []
-    seen_names = set()
-    for c in cats:
-        title = (c.get("title") or "").strip()
-        if not title or title in seen_names:
-            continue
-        if re.search(r'campañ|cyber|revancha|servicio|asesor', title, re.I):
-            continue
-        subs = []
-        seen_urls = set()
-        for s in c.get("second_level_categories") or []:
-            n = (s.get("item_name") or "").strip()
-            raw = s.get("item_url")
-            u = raw.strip() if isinstance(raw, str) else ""
-            if not n or not u.startswith("http"):
-                continue
-            u = _strip_landing(u)
-            if not _is_listing(u):
-                continue  # excluye /content//articulo/ (editorial, no grilla)
-            key = u.split("?")[0].rstrip("/")
-            if key in seen_urls:
-                continue
-            seen_urls.add(key)
-            subs.append((n, u))
-        if subs:
-            seen_names.add(title)
-            sections.append((title, subs))
-    sections.sort(key=lambda x: x[0])
-    return sections
+    from engines import maestra_sodimac as _ms
+    return await _ms.discover_sections(page, include_landing=True)
 
 
 async def open_session(store, *, headless=True):
@@ -372,8 +317,7 @@ async def open_session(store, *, headless=True):
 
     Devuelve (cookie_header, tree) donde tree = [(sección, [(subcat, url), ...]), ...].
     Reutiliza el mismo `page` para fijar zona y descubrir el árbol → una sola
-    apertura de navegador por zona (el resto del barrido es HTTP puro). Usa
-    `discover_tree` (NO la de producción) para no perder las categorías isLanding.
+    apertura de navegador por zona (el resto del barrido es HTTP puro).
     """
     from playwright.async_api import async_playwright
     from playwright_stealth import Stealth

@@ -266,7 +266,10 @@ def run():
                                                   "Chrome/120.0.0.0 Safari/537.36"))
             page = await ctx.new_page()
             try:
-                return await discover_sections(page)
+                # include_landing=False: Ferni Maestra dedup SOLO dentro de cada
+                # subcat (no entre subcats), así que el roll-up de las entradas
+                # "Todo X" (isLanding) duplicaría filas. Mantiene el árbol clásico.
+                return await discover_sections(page, include_landing=False)
             finally:
                 await b.close()
 
