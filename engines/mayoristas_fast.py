@@ -299,16 +299,84 @@ def is_wholesale(r) -> bool:
 # TODO el árbol de categorías (como la Maestra Sección) por HTTP y filtramos en
 # código a los que tienen precio mayorista. Cobertura completa, browserless.
 
+async def discover_tree(page):
+    """Árbol de categorías para el barrido de mayoristas.
+
+    DIFERENCIA CLAVE con `maestra_sodimac.discover_sections`: esa DESCARTA las
+    entradas del menú con `isLanding=true` — y resultó (verificado en vivo 2026-
+    07-15) que esas entradas "Todo X" son justo donde viven categorías ENTERAS.
+    Ej.: la sección Pisos tenía en el menú "Todo Pisos" (isLanding) con Cerámicas,
+    Porcelanatos, Pisos Flotantes, Vinílicos, Madera/Deck anidados; al descartarla
+    sólo quedaban los accesorios (Mosaicos, Fragües…) y se perdían CIENTOS de
+    productos (Porcelanatos 397, Cerámicas 355, Flotantes 56 con precio Sodimac).
+
+    Fix: NO descartar isLanding — se le quita el parámetro `isLanding=true` (la
+    misma URL /lista/CATG.../ renderiza grilla y hace roll-up de sus descendientes,
+    así que basta el segundo nivel). Se filtra a URLs de listado (`/lista/` o
+    `/buscar`) para excluir /content//articulo/. Dedup por catid. NO toca la
+    `discover_sections` de producción (la Maestra la sigue usando igual).
+    """
+    import json as _json
+    await page.goto("https://www.sodimac.cl/sodimac-cl/",
+                    wait_until="domcontentloaded", timeout=60000)
+    await page.wait_for_timeout(2500)
+    html = await page.content()
+    m = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', html)
+    if not m:
+        return []
+    try:
+        cats = (_json.loads(m.group(1))["props"]["pageProps"]["serverData"]
+                ["headerData"]["sisNavigationMenu"]["entry"]["categories"])
+    except Exception:
+        return []
+
+    def _strip_landing(u):
+        return re.sub(r'([?&])isLanding=true&?', r'\1', u).rstrip('?&')
+
+    def _is_listing(u):
+        return "/lista/" in u or "/buscar" in u
+
+    sections = []
+    seen_names = set()
+    for c in cats:
+        title = (c.get("title") or "").strip()
+        if not title or title in seen_names:
+            continue
+        if re.search(r'campañ|cyber|revancha|servicio|asesor', title, re.I):
+            continue
+        subs = []
+        seen_urls = set()
+        for s in c.get("second_level_categories") or []:
+            n = (s.get("item_name") or "").strip()
+            raw = s.get("item_url")
+            u = raw.strip() if isinstance(raw, str) else ""
+            if not n or not u.startswith("http"):
+                continue
+            u = _strip_landing(u)
+            if not _is_listing(u):
+                continue  # excluye /content//articulo/ (editorial, no grilla)
+            key = u.split("?")[0].rstrip("/")
+            if key in seen_urls:
+                continue
+            seen_urls.add(key)
+            subs.append((n, u))
+        if subs:
+            seen_names.add(title)
+            sections.append((title, subs))
+    sections.sort(key=lambda x: x[0])
+    return sections
+
+
 async def open_session(store, *, headless=True):
-    """Abre el navegador UNA vez: warmup + set_zone + discover_sections.
+    """Abre el navegador UNA vez: warmup + set_zone + discover_tree.
 
     Devuelve (cookie_header, tree) donde tree = [(sección, [(subcat, url), ...]), ...].
     Reutiliza el mismo `page` para fijar zona y descubrir el árbol → una sola
-    apertura de navegador por zona (el resto del barrido es HTTP puro).
+    apertura de navegador por zona (el resto del barrido es HTTP puro). Usa
+    `discover_tree` (NO la de producción) para no perder las categorías isLanding.
     """
     from playwright.async_api import async_playwright
     from playwright_stealth import Stealth
-    from engines import maestra_sodimac as _ms
     async with Stealth().use_async(async_playwright()) as pw:
         b = await pw.chromium.launch(headless=headless,
                                      args=["--no-sandbox", "--disable-dev-shm-usage"])
@@ -322,7 +390,7 @@ async def open_session(store, *, headless=True):
             if not ok:
                 return "", []
             cookie = _cookie_header(await ctx.cookies())
-            tree = await _ms.discover_sections(pg)
+            tree = await discover_tree(pg)
             return cookie, tree
         finally:
             await b.close()
