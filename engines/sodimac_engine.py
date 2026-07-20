@@ -196,20 +196,6 @@ _EXTRACT_CARD_JS = r"""(card) => {
     let precio_normal = "";
     const strike = card.querySelector('s, del, [class*="line-through"], [class*="crossed"], [class*="strikethrough"]');
     if (strike) precio_normal = (strike.innerText || '').replace(/\s+/g, ' ').trim();
-    let precio_cmr = "";
-    const cmrLabel = [...card.querySelectorAll('*')].find(e => {
-        const t = (e.innerText || '').trim();
-        return t && t.length < 50 && /\bCMR\b/.test(t) && /\$/.test(t);
-    });
-    if (cmrLabel) {
-        const m = (cmrLabel.innerText || '').match(/\$\s*[\d.,]+/);
-        if (m) {
-            const candidate = m[0].replace(/\s+/g, ' ').trim();
-            const intDigits = (precio_internet || '').replace(/\D/g, '');
-            const cmrDigits = candidate.replace(/\D/g, '');
-            if (cmrDigits && cmrDigits !== intDigits) precio_cmr = candidate;
-        }
-    }
     let pct_descuento = "";
     const pctRegex = /-?\d{1,3}\s*%/;
     const discBadge = card.querySelector('[class*="discount-badge-item"], [class*="discount-badge"]');
@@ -233,7 +219,7 @@ _EXTRACT_CARD_JS = r"""(card) => {
         precio_normal: precio_normal,
         precio_internet: precio_internet,
         pct_descuento: pct_descuento,
-        precio_cmr: precio_cmr,
+
         precio_mayorista: precio_mayorista,
         descuento_mayorista: descuento_mayorista,
         todos_los_precios: allPrices.join(" | "),
