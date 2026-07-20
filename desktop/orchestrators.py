@@ -29,6 +29,10 @@ from pathlib import Path
 # Paralelismo local: más agresivo que en Colab (ver docstring).
 FAST_WORKERS = 12
 
+# UA propio: `maestra_sodimac` no exporta USER_AGENT (sí lo hace sodimac_engine).
+USER_AGENT = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
 
 def _ts() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -92,7 +96,7 @@ async def discover_sections_desktop(emit, include_landing=True):
     async with Stealth().use_async(async_playwright()) as pw:
         b = await pw.chromium.launch(headless=True, args=["--no-sandbox"])
         try:
-            ctx = await b.new_context(user_agent=ms.USER_AGENT,
+            ctx = await b.new_context(user_agent=USER_AGENT,
                                       viewport={"width": 1280, "height": 900})
             pg = await ctx.new_page()
             tree = await ms.discover_sections(pg, include_landing=include_landing)
@@ -130,7 +134,7 @@ async def run_seccion(params, emit, outdir: Path):
     async with Stealth().use_async(async_playwright()) as pw:
         b = await pw.chromium.launch(headless=True, args=["--no-sandbox"])
         try:
-            ctx = await b.new_context(user_agent=ms.USER_AGENT,
+            ctx = await b.new_context(user_agent=USER_AGENT,
                                       viewport={"width": 1280, "height": 900},
                                       color_scheme="light")
             page = await ctx.new_page()
