@@ -54,7 +54,7 @@ OUTPUT_COLS = [
     "Tienda", "Nombre Tienda", "Sección", "Subcategoría",
     "Vendedor", "Marca", "SKU", "Descripción Producto",
     "Precio Normal", "Precio Internet", "% Descuento",
-    "Precio CMR", "Precio Mayorista", "Descuento Mayorista",
+    "Precio Mayorista", "Descuento Mayorista",
     "Todos los Precios", "URL",
 ]
 
@@ -194,16 +194,6 @@ def _wholesale(r):
     return "", "", ""
 
 
-def _cmr_from_prices(prices):
-    """Precio CMR si aparece en prices[] (label/type con 'cmr'); "" si no."""
-    for p in prices or []:
-        blob = f"{p.get('type','')} {p.get('label','')}".lower()
-        if "cmr" in blob:
-            shown, _ = _price_str(p)
-            return shown
-    return ""
-
-
 def row_from_result(r, store):
     """Construye una fila (dict OUTPUT_COLS) desde un result del __NEXT_DATA__."""
     prices = r.get("prices") or []
@@ -245,7 +235,6 @@ def row_from_result(r, store):
         "Precio Normal": normal,
         "Precio Internet": internet_shown,
         "% Descuento": pct,
-        "Precio CMR": _cmr_from_prices(prices),
         "Precio Mayorista": may,
         "Descuento Mayorista": desc_may,
         "Todos los Precios": todos,

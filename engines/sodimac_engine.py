@@ -739,7 +739,6 @@ def write_output(df, desc_col, sku_col, easy_col, matches, output_path, stores=N
     cols["Precio Normal"]            = [r["precio_normal"] for r in rows]
     cols["Precio Internet"]          = [r["precio_internet"] for r in rows]
     cols["% Descuento"]              = [r["pct_descuento"] for r in rows]
-    cols["Precio CMR"]               = [r["precio_cmr"] for r in rows]
     cols["Precio Mayorista"]         = [r["precio_mayorista"] for r in rows]
     cols["Descuento Mayorista"]      = [r["descuento_mayorista"] for r in rows]
     cols["Todos los Precios"]        = [r["todos_los_precios"] for r in rows]
