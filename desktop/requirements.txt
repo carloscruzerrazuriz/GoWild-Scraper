@@ -1,0 +1,9 @@
+# GoWild Desktop — dependencias del ejecutable.
+# El servidor usa sólo stdlib (http.server) a propósito: menos deps = .exe más
+# chico y build de PyInstaller menos frágil. Estas son las de los engines.
+playwright>=1.40
+playwright-stealth>=1.0.6
+pandas>=2.0
+openpyxl>=3.1
+beautifulsoup4>=4.12
+Pillow>=10.0

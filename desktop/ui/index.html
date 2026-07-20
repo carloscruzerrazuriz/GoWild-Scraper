@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GoWild Desktop</title>
+<link rel="stylesheet" href="/ui/style.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">GW</div>
+      <div>
+        <h1>GoWild</h1>
+        <span id="version">Desktop</span>
+      </div>
+    </div>
+
+    <nav id="nav">
+      <button class="tool active" data-tool="mk7">
+        <b>MK7</b><span>Buscador por SKU</span>
+      </button>
+      <button class="tool" data-tool="seccion">
+        <b>Sección</b><span>Catálogo por categoría</span>
+      </button>
+      <button class="tool" data-tool="fast">
+        <b>Fast</b><span>Precios por mayor</span>
+      </button>
+      <div class="navsep">Ferni</div>
+      <button class="tool" data-tool="ferni_sku">
+        <b>Puertas por SKU</b><span>medida y precio exactos</span>
+      </button>
+      <button class="tool" data-tool="ferni_seccion">
+        <b>Ferni Sección</b><span>puertas y más, por categoría</span>
+      </button>
+    </nav>
+
+    <div class="side-foot">
+      <div class="badge" id="envBadge">local</div>
+      <p>Corre en tu PC: más rápido, sin límite de sesión.</p>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ══ Tiendas (compartido) ══ -->
+    <section class="card" id="storesCard">
+      <header><h2>Tiendas</h2><span class="hint" id="storeCount">—</span></header>
+      <div class="presets">
+        <button class="chip" data-preset="cerrillos">Solo Cerrillos</button>
+        <button class="chip" data-preset="rm">Región Metropolitana</button>
+        <button class="chip" data-preset="all">Todas (42)</button>
+        <button class="chip" data-preset="none">Ninguna</button>
+      </div>
+      <div class="grid" id="stores"></div>
+    </section>
+
+    <!-- ══ MK7 ══ -->
+    <section class="card pane" id="pane-mk7">
+      <header><h2>MK7 · Buscador por SKU</h2></header>
+      <p class="lead">Sube tu Excel con la columna <code>SKU Sodimac</code>. Busca cada SKU en las tiendas seleccionadas.</p>
+      <label class="file">
+        <input type="file" id="mk7File" accept=".xlsx,.xls">
+        <span id="mk7FileName">Elegir archivo…</span>
+      </label>
+      <label class="check"><input type="checkbox" id="mk7Shots"> Capturar fotos de las cards</label>
+    </section>
+
+    <!-- ══ Sección ══ -->
+    <section class="card pane hidden" id="pane-seccion">
+      <header><h2>Maestra Sección</h2></header>
+      <p class="lead">Recorre el árbol de categorías de Sodimac y arma el catálogo.</p>
+      <button class="btn ghost" id="loadSections">Cargar secciones</button>
+      <div id="secWrap" class="hidden">
+        <select id="secSelect"></select>
+        <div class="subhead">
+          <span id="subCount">—</span>
+          <span>
+            <button class="mini" data-sub="all">Todas</button>
+            <button class="mini" data-sub="none">Ninguna</button>
+          </span>
+        </div>
+        <div class="grid" id="subcats"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="secNonSod"> Incluir marketplace (no-Sodimac)</label>
+      <label class="check"><input type="checkbox" id="secShots"> Capturar fotos de las cards</label>
+    </section>
+
+    <!-- ══ Fast ══ -->
+    <section class="card pane hidden" id="pane-fast">
+      <header><h2>Fast · Precios por mayor</h2><span class="tag">sin navegador</span></header>
+      <p class="lead">Recorre el catálogo por HTTP (mucho más rápido) y conserva los productos con precio mayorista.</p>
+      <div class="radios">
+        <label><input type="radio" name="fastScope" value="all" checked> Todo el catálogo</label>
+        <label><input type="radio" name="fastScope" value="sections"> Elegir secciones</label>
+        <label><input type="radio" name="fastScope" value="url"> URL personalizada</label>
+      </div>
+      <div id="fastSecWrap" class="hidden">
+        <button class="btn ghost" id="fastLoadSections">Cargar secciones</button>
+        <div class="grid" id="fastSections"></div>
+      </div>
+      <input type="text" id="fastUrl" class="hidden input" placeholder="https://www.sodimac.cl/sodimac-cl/lista/...">
+      <label class="check"><input type="checkbox" id="fastWholesale" checked> Solo productos con precio mayorista</label>
+    </section>
+
+    <!-- ══ Ferni SKU ══ -->
+    <section class="card pane hidden" id="pane-ferni_sku">
+      <header><h2>Ferni · Puertas por SKU</h2><span class="tag">1 fila por medida</span></header>
+      <p class="lead">Para puertas y productos con selector de medida: extrae la <b>medida y el precio exactos</b> de cada variante, no el rango de la card.</p>
+      <label class="file">
+        <input type="file" id="ferniFile" accept=".xlsx,.xls">
+        <span id="ferniFileName">Elegir archivo…</span>
+      </label>
+      <label class="check"><input type="checkbox" id="ferniShots"> Capturar fotos de las cards</label>
+    </section>
+
+    <!-- ══ Ferni Sección ══ -->
+    <section class="card pane hidden" id="pane-ferni_seccion">
+      <header><h2>Ferni · Sección</h2><span class="tag">1 fila por medida</span></header>
+      <p class="lead">Recorre categorías y expande cada producto por medida. Ideal para puertas.</p>
+      <button class="btn ghost" id="fsLoadSections">Cargar secciones</button>
+      <div id="fsWrap" class="hidden">
+        <select id="fsSelect"></select>
+        <div class="subhead">
+          <span id="fsCount">—</span>
+          <span>
+            <button class="mini" data-fsub="all">Todas</button>
+            <button class="mini" data-fsub="none">Ninguna</button>
+          </span>
+        </div>
+        <div class="grid" id="fsSubcats"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="fsShots"> Capturar fotos de las cards</label>
+    </section>
+
+    <!-- ══ Ejecutar ══ -->
+    <section class="card">
+      <button class="btn primary" id="runBtn">Iniciar</button>
+      <div id="progWrap" class="hidden">
+        <div class="bar"><div id="bar"></div></div>
+        <div class="progline"><span id="progMsg">…</span><span id="progPct"></span></div>
+        <div class="metrics"><span id="rowCount">0</span> filas · <span id="elapsed">0s</span></div>
+      </div>
+      <pre id="log" class="log hidden"></pre>
+      <div id="result" class="result hidden"></div>
+    </section>
+
+    <section class="card">
+      <header><h2>Archivos generados</h2></header>
+      <div id="outputs" class="outputs">—</div>
+    </section>
+
+  </main>
+</div>
+
+<footer class="legal">
+  GoWild Desktop — Carlos Cruz E.<br>
+  Copyright (c) 2026 Carlos Cruz Errazuriz · All rights reserved · Proprietary — No unauthorized use or distribution
+</footer>
+
+<script src="/ui/app.js"></script>
+</body>
+</html>
