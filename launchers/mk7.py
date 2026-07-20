@@ -891,6 +891,27 @@ def run():
                                   meta.get("sku_col"), meta.get("easy_col") or "SKU Easy",
                                   matches, str(out), stores=all_stores)
             state["rows"] = matches
+            # Stock por tienda (opcional, toggle apagado por defecto).
+            if stock_cb.value:
+                try:
+                    from engines import _stock_sodimac as _stk
+                    _skus, _names = [], {}
+                    for _r in matches:
+                        _s = str(_r.get("SKU Sodimac") or "").strip()
+                        if _s and _s not in _names:
+                            _skus.append(_s)
+                            _names[_s] = _r.get("descripcion") or ""
+                    live_status.value = (f"<b>Consultando stock por tienda</b> — "
+                                         f"{len(_skus)} SKUs × 42 tiendas Easy…")
+                    def _stk_prog(d, t):
+                        live_status.value = (f"<b>Stock por tienda</b> — {d}/{t} consultas "
+                                             f"({100*d//max(t,1)}%)")
+                    _n, _ok = _stk.add_stock_sheets(str(out), _skus, names=_names,
+                                                    progress_cb=_stk_prog)
+                    live_status.value = (f"<span style='color:#27ae60'>Stock por tienda listo: "
+                                         f"{_n} filas, {_ok}/{len(_skus)} SKUs con stock.</span>")
+                except Exception as _e:
+                    live_status.value = f"<span style='color:#c0392b'>Stock por tienda falló: {_e}</span>"
         else:
             raise RuntimeError(f"Retailer no soportado: {retailer}")
 
@@ -979,9 +1000,20 @@ def run():
 
     run_btn.on_click(on_run_clicked)
 
+    # Stock por tienda (solo Sodimac): apagado por defecto — agrega 1 consulta
+    # por SKU × cada una de las 42 tiendas Easy, así que alarga el run.
+    stock_cb = widgets.Checkbox(
+        value=False, description="Capturar stock por tienda (solo Sodimac)",
+        indent=False, layout=widgets.Layout(width="auto"))
+    stock_note = widgets.HTML(
+        "<div style='color:#8a6d3b;background:#fcf8e3;border-left:3px solid #f0ad4e;"
+        "padding:.35rem .6rem;margin:.2rem 0 .5rem;border-radius:3px;font-size:.85em;'>"
+        "⚠️ Ralentiza el proceso considerablemente. Agrega 2 hojas con las unidades "
+        "disponibles en el Sodimac más cercano a cada una de las 42 tiendas Easy.</div>")
+
     run_container = widgets.VBox([
         widgets.HTML("<h4 style='margin:.8rem 0 .3rem;'>🚀 Paso 3 — Ejecutar</h4>"),
-        run_summary, speed_note, run_btn, running_banner,
+        run_summary, speed_note, stock_cb, stock_note, run_btn, running_banner,
         widgets.HBox([store_bar, store_pct], layout=widgets.Layout(align_items="center")),
         widgets.HBox([sku_bar, sku_pct], layout=widgets.Layout(align_items="center")),
         live_status, live_metrics, result_out,

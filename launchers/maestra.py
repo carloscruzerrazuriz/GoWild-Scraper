@@ -222,6 +222,17 @@ def run():
         value=False, description="Capturar screenshots de cards (Excel más pesado)",
         indent=False, layout=widgets.Layout(width="auto"),
     )
+    # Stock por tienda: apagado por defecto (1 consulta por SKU x 42 tiendas Easy).
+    capture_stock = widgets.Checkbox(
+        value=False, description="Capturar stock por tienda",
+        indent=False, layout=widgets.Layout(width="auto"),
+    )
+    stock_note = widgets.HTML(
+        "<div style='color:#8a6d3b;background:#fcf8e3;border-left:3px solid #f0ad4e;"
+        "padding:.35rem .6rem;margin:.2rem 0 .5rem;border-radius:3px;font-size:.85em;'>"
+        "Ralentiza el proceso considerablemente. Agrega 2 hojas con las unidades "
+        "disponibles en el Sodimac mas cercano a cada una de las 42 tiendas Easy.</div>"
+    )
 
     preset_radio.observe(update_stores, "value")
     for child in store_panel.children[1].children:
@@ -232,7 +243,7 @@ def run():
         widgets.HTML("<h4 style='margin:.3rem 0;'>📍 Paso 1 — Tiendas</h4>"),
         preset_radio, store_panel_wrap, store_eta,
         widgets.HTML("<h4 style='margin:.8rem 0 .3rem;'>⚙️ Opciones avanzadas</h4>"),
-        include_non_sodimac, capture_screenshots,
+        include_non_sodimac, capture_screenshots, capture_stock, stock_note,
     ])
 
     # ─── Paso 2: secciones ────────────────────────────────────────────
@@ -677,6 +688,20 @@ def run():
         with result_out:
             print("💾 Escribiendo Excel…")
             write_excel(rows, str(output), with_images=bool(result["capture_screenshots"]))
+            if capture_stock.value:
+                try:
+                    from engines import _stock_sodimac as _stk
+                    _skus, _names = [], {}
+                    for _r in rows:
+                        _s = str(_r.get("SKU") or "").strip()
+                        if _s and _s not in _names:
+                            _skus.append(_s)
+                            _names[_s] = _r.get("Descripción Producto") or ""
+                    print(f"📦 Stock por tienda: {len(_skus)} SKUs x 42 tiendas Easy…")
+                    _n, _ok = _stk.add_stock_sheets(str(output), _skus, names=_names)
+                    print(f"   Stock listo: {_n} filas · {_ok}/{len(_skus)} SKUs con stock")
+                except Exception as _e:
+                    print(f"   ⚠️ Stock por tienda falló: {_e}")
             n_skus = len({x["SKU"] for x in rows if x.get("SKU")})
             n_stores_res = len({x["Tienda"] for x in rows if x.get("Tienda")})
             print(f"\n✅ Listo — {len(rows)} filas · {n_skus} SKUs únicos · {n_stores_res} tienda(s)")

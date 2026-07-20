@@ -333,21 +333,6 @@ def _build_extract_all_js(section_name, subcat_name):
             const strike = card.querySelector(SEL.strikethrough);
             if (strike) precio_normal = norm(strike.innerText);
 
-            let precio_cmr = "";
-            const cmrLabel = [...card.querySelectorAll('*')].find(e => {{
-                const t = (e.innerText || '').trim();
-                return t && t.length < 50 && /\\bCMR\\b/.test(t) && /\\$/.test(t);
-            }});
-            if (cmrLabel) {{
-                const m = (cmrLabel.innerText || '').match(/\\$\\s*[\\d.,]+/);
-                if (m) {{
-                    const candidate = norm(m[0]);
-                    const intDigits = (precio_internet || '').replace(/\\D/g, '');
-                    const cmrDigits = candidate.replace(/\\D/g, '');
-                    if (cmrDigits && cmrDigits !== intDigits) precio_cmr = candidate;
-                }}
-            }}
-
             let pct_descuento = "";
             const pctRegex = /-?\\d{{1,3}}\\s*%/;
             const discBadge = card.querySelector(SEL.discount_badge);
@@ -373,7 +358,6 @@ def _build_extract_all_js(section_name, subcat_name):
                 "Precio Normal": precio_normal,
                 "Precio Internet": precio_internet,
                 "% Descuento": pct_descuento,
-                "Precio CMR": precio_cmr,
                 "Precio Mayorista": precio_mayorista,
                 "Descuento Mayorista": descuento_mayorista,
                 "Todos los Precios": allPrices.join(" | "),
@@ -727,7 +711,7 @@ OUTPUT_COLS = [
     "Tienda", "Nombre Tienda", "Sección", "Subcategoría",
     "Vendedor", "Marca", "SKU", "Descripción Producto",
     "Precio Normal", "Precio Internet", "% Descuento",
-    "Precio CMR", "Precio Mayorista", "Descuento Mayorista",
+    "Precio Mayorista", "Descuento Mayorista",
     "Todos los Precios", "URL",
 ]
 
@@ -772,7 +756,6 @@ def section_summary(rows, section_name, output_file):
     t.add_row("Con Precio Mayorista", str(sum(1 for r in rows if r.get("Precio Mayorista"))))
     t.add_row("Con Precios Congelados", str(sum(1 for r in rows if r.get("Precios Congelados") == "Si")))
     t.add_row("Con % Descuento", str(sum(1 for r in rows if r.get("% Descuento"))))
-    t.add_row("Con Precio CMR", str(sum(1 for r in rows if r.get("Precio CMR"))))
     t.add_row("Con Precio Normal (tachado)", str(sum(1 for r in rows if r.get("Precio Normal"))))
     console.print(t)
     console.print(f"\n[bold green]✓ Excel guardado en:[/] [cyan]{output_file}[/]")
