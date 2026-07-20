@@ -66,14 +66,22 @@ def _log(msg):
     print(f"  {msg}", flush=True)
 
 
-def _sweep_stale():
-    """Borra restos de ejecuciones anteriores que murieron sin limpiar."""
+def _sweep_stale(min_age_secs=900):
+    """Borra restos de ejecuciones anteriores que murieron sin limpiar.
+
+    Sólo toca carpetas con más de `min_age_secs` de antigüedad: si el usuario
+    abre una segunda ventana de la app, no queremos que le borre el código a la
+    que ya está corriendo.
+    """
+    import time as _t
     base = Path(tempfile.gettempdir())
     n = 0
     for p in base.glob(f"{_TMP_PREFIX}*"):
         if _CODE_DIR and p == _CODE_DIR:
             continue
         try:
+            if _t.time() - p.stat().st_mtime < min_age_secs:
+                continue          # probablemente sea otra instancia viva
             shutil.rmtree(p, ignore_errors=True)
             n += 1
         except Exception:  # noqa: BLE001
@@ -141,7 +149,17 @@ def update_code() -> Path | None:
 
 
 def ensure_chromium():
-    """Instala el Chromium de Playwright la primera vez (MK7 y Sección lo usan)."""
+    """Instala el Chromium de Playwright la primera vez (MK7 y Sección lo usan).
+
+    ⚠️ NUNCA usar `sys.executable -m playwright install` acá: dentro de un .exe
+    de PyInstaller `sys.executable` ES EL PROPIO EJECUTABLE, no un intérprete de
+    Python. Esa llamada relanzaba GoWild.exe, que volvía a descargar el código y
+    a llamar a esta función → bucle infinito de descargar/borrar (bug real
+    reportado en la v1).
+
+    Se invoca el **driver de Node de Playwright** directamente, que es lo que
+    hace por dentro `playwright.__main__`.
+    """
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
@@ -150,16 +168,21 @@ def ensure_chromium():
                 return True
     except Exception:  # noqa: BLE001
         pass
+
     _log("Instalando el navegador (sólo la primera vez, ~150 MB)…")
     try:
         import subprocess
-        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"],
-                       check=True)
+        from playwright._impl._driver import compute_driver_executable, get_driver_env
+
+        drv = compute_driver_executable()
+        cmd = ([str(drv[0]), str(drv[1])] if isinstance(drv, (tuple, list))
+               else [str(drv)])          # la API cambió de forma entre versiones
+        subprocess.run(cmd + ["install", "chromium"], env=get_driver_env(), check=True)
         _log("Navegador instalado.")
         return True
     except Exception as e:  # noqa: BLE001
-        _log(f"Aviso: no pude instalar el navegador ({e}). "
-             "MK7 y Sección lo necesitan; Fast funciona igual.")
+        _log(f"Aviso: no pude instalar el navegador ({e}).")
+        _log("MK7, Sección y Ferni lo necesitan; Fast funciona igual.")
         return False
 
 
@@ -172,6 +195,14 @@ def free_port(start=DEFAULT_PORT) -> int:
 
 
 def main():
+    # Guardia anti-bucle: si un subproceso relanzara el ejecutable (fue el bug de
+    # la v1 con `sys.executable`), el hijo detecta la marca y se detiene en vez
+    # de volver a descargar el código y relanzarse otra vez.
+    if os.environ.get("GOWILD_RUNNING") == "1":
+        print("  [GoWild] Instancia hija detectada; no se relanza.", flush=True)
+        return 0
+    os.environ["GOWILD_RUNNING"] = "1"
+
     print("\n  GoWild Desktop\n  " + "─" * 40, flush=True)
     root = update_code()
     if root is None:
