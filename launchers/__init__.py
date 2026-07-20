@@ -18,6 +18,7 @@ _TOOLS = {
     "ferni":        "launchers.ferni",
     "competidores": "launchers.competidores",
     "pcfactory":    "launchers.pcfactory",
+    "portalinmobiliario": "launchers.portalinmobiliario",
 }
 
 
