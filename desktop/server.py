@@ -16,9 +16,12 @@ import asyncio
 import json
 import mimetypes
 import queue
+import re
 import sys
 import threading
+import time
 import traceback
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
@@ -84,33 +87,59 @@ def _ensure_browser():
     except Exception as e:  # noqa: BLE001
         print(f"  (aviso: no pude preparar el navegador: {e})", flush=True)
 
-# Estado del job en curso (uno a la vez: son scrapes pesados).
-JOB = {"running": False, "events": None, "result": None, "error": None, "tool": None}
+# ── Registro de jobs (hasta MAX_CONCURRENT en paralelo) ─────────────────────
+# Antes había UN solo job global. Ahora cada scrape es un job con su propio
+# id, su cola de eventos (SSE) y su hilo+event-loop. La cola se crea al lanzar
+# (no al conectar el SSE) para no perder los eventos que se emiten antes de que
+# el navegador abra el stream.
+MAX_CONCURRENT = 3          # cuántos scrapes a la vez
+FAST_WORKER_BUDGET = 12     # workers TOTALES de Fast repartidos entre los Fast activos
+JOBS = {}                   # job_id -> {running, events:Queue, result, error, tool, done_at}
+JOBS_LOCK = threading.Lock()
 
 
-def _emit(ev):
-    q = JOB.get("events")
-    if q is not None:
-        q.put(ev)
+def _active_count():
+    return sum(1 for j in JOBS.values() if j["running"])
 
 
-def _run_job(tool, params):
+def _active_fast_count():
+    return sum(1 for j in JOBS.values() if j["running"] and j["tool"] == "fast")
+
+
+def _gc_jobs(ttl=300):
+    """Saca del registro los jobs terminados hace más de `ttl` s."""
+    now = time.time()
+    for jid in [k for k, j in JOBS.items()
+                if not j["running"] and j.get("done_at") and now - j["done_at"] > ttl]:
+        JOBS.pop(jid, None)
+
+
+def _emit(job_id, ev):
+    j = JOBS.get(job_id)
+    if j is not None and j["events"] is not None:
+        j["events"].put(ev)
+
+
+def _run_job(job_id, tool, params):
     """Corre la herramienta en un hilo con su propio event loop."""
     from orchestrators import TOOLS
     loop = _new_loop()
     asyncio.set_event_loop(loop)
+    emit = lambda ev: _emit(job_id, ev)  # noqa: E731
+    tag = job_id[:6]  # sufijo corto para nombre de archivo / screenshots únicos
     try:
-        out = loop.run_until_complete(TOOLS[tool]["run"](params, _emit, OUTPUT_DIR))
-        JOB["result"] = str(out)
-        _emit({"type": "done", "file": Path(out).name, "path": str(out)})
+        out = loop.run_until_complete(TOOLS[tool]["run"](params, emit, OUTPUT_DIR, tag))
+        JOBS[job_id]["result"] = str(out)
+        emit({"type": "done", "file": Path(out).name, "path": str(out)})
     except Exception as e:  # noqa: BLE001
-        JOB["error"] = str(e)
-        _emit({"type": "error", "msg": str(e),
-               "detail": traceback.format_exc()[-1200:]})
+        JOBS[job_id]["error"] = str(e)
+        emit({"type": "error", "msg": str(e),
+              "detail": traceback.format_exc()[-1200:]})
     finally:
         loop.close()
-        JOB["running"] = False
-        _emit({"type": "eof"})
+        JOBS[job_id]["running"] = False
+        JOBS[job_id]["done_at"] = time.time()
+        emit({"type": "eof"})
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -176,11 +205,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": str(e), "detail": tb[-1500:]}, 500)
 
         if route == "/api/events":
-            return self._sse()
+            job_id = (parse_qs(p.query).get("job") or [""])[0]
+            return self._sse(job_id)
 
         if route == "/api/status":
-            return self._json({"running": JOB["running"], "tool": JOB["tool"],
-                               "result": JOB["result"], "error": JOB["error"]})
+            # resumen de jobs vivos (para reconectar / debug)
+            return self._json({
+                "active": _active_count(), "max": MAX_CONCURRENT,
+                "jobs": [{"id": jid, "tool": j["tool"], "running": j["running"],
+                          "error": j["error"]} for jid, j in JOBS.items()]})
 
         if route == "/api/download":
             q = parse_qs(p.query)
@@ -195,8 +228,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if route == "/api/outputs":
             files = sorted(OUTPUT_DIR.glob("*.xlsx"), key=lambda f: -f.stat().st_mtime)[:20]
-            return self._json([{"name": f.name, "path": str(f),
-                                "size": f.stat().st_size} for f in files])
+            out = []
+            for f in files:
+                st = f.stat()
+                out.append({"name": f.name, "path": str(f), "size": st.st_size,
+                            "mtime": int(st.st_mtime * 1000)})  # epoch ms
+            return self._json(out)
 
         return self._json({"error": "not found"}, 404)
 
@@ -206,9 +243,11 @@ class Handler(BaseHTTPRequestHandler):
         ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         return self._send(200, path.read_bytes(), ctype)
 
-    def _sse(self):
-        q = queue.Queue()
-        JOB["events"] = q
+    def _sse(self, job_id):
+        j = JOBS.get(job_id)
+        if j is None:
+            return self._json({"error": "job desconocido"}, 404)
+        q = j["events"]  # la cola ya existe (se creó al lanzar el job)
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
@@ -240,18 +279,64 @@ class Handler(BaseHTTPRequestHandler):
             dest.write_bytes(self._body())
             return self._json({"path": str(dest), "name": name})
 
+        if p.path == "/api/delete":
+            # borra un Excel generado; sólo dentro de OUTPUT_DIR (mismo guard que download)
+            payload = json.loads(self._body() or b"{}")
+            path = Path(payload.get("path") or "")
+            if not path.is_file() or OUTPUT_DIR not in path.resolve().parents:
+                return self._json({"error": "archivo no encontrado"}, 404)
+            try:
+                path.unlink()
+            except Exception as e:  # noqa: BLE001
+                return self._json({"error": str(e)}, 500)
+            return self._json({"ok": True})
+
+        if p.path == "/api/rename":
+            # renombra un Excel generado; sólo dentro de OUTPUT_DIR, conserva .xlsx
+            payload = json.loads(self._body() or b"{}")
+            src = Path(payload.get("path") or "")
+            if not src.is_file() or OUTPUT_DIR not in src.resolve().parents:
+                return self._json({"error": "archivo no encontrado"}, 404)
+            base = Path(payload.get("name") or "").name  # descarta cualquier ruta
+            base = re.sub(r'[<>:"/\\|?*]', "", base).strip()
+            if not base:
+                return self._json({"error": "nombre inválido"}, 400)
+            if not base.lower().endswith(".xlsx"):
+                base += ".xlsx"
+            dest = src.parent / base
+            if dest.exists():
+                return self._json({"error": "ya existe un archivo con ese nombre"}, 409)
+            try:
+                src.rename(dest)
+            except Exception as e:  # noqa: BLE001
+                return self._json({"error": str(e)}, 500)
+            return self._json({"ok": True, "path": str(dest), "name": base})
+
         if p.path == "/api/run":
-            if JOB["running"]:
-                return self._json({"error": "Ya hay un proceso corriendo."}, 409)
             payload = json.loads(self._body() or b"{}")
             tool = payload.get("tool")
             from orchestrators import TOOLS
             if tool not in TOOLS:
                 return self._json({"error": f"herramienta desconocida: {tool}"}, 400)
-            JOB.update(running=True, result=None, error=None, tool=tool)
-            threading.Thread(target=_run_job, args=(tool, payload.get("params") or {}),
+            params = payload.get("params") or {}
+            with JOBS_LOCK:
+                _gc_jobs()
+                if _active_count() >= MAX_CONCURRENT:
+                    return self._json(
+                        {"error": f"Ya hay {MAX_CONCURRENT} procesos corriendo. "
+                                  "Espera a que termine uno."}, 409)
+                job_id = uuid.uuid4().hex[:12]
+                JOBS[job_id] = {"running": True, "events": queue.Queue(),
+                                "result": None, "error": None, "tool": tool,
+                                "done_at": None}
+                # Presupuesto de workers de Fast repartido entre los Fast activos
+                # (incluye este job, recién registrado): carga total ~constante.
+                if tool == "fast":
+                    n_fast = _active_fast_count()
+                    params["_workers"] = max(3, FAST_WORKER_BUDGET // max(1, n_fast))
+            threading.Thread(target=_run_job, args=(job_id, tool, params),
                              daemon=True).start()
-            return self._json({"ok": True})
+            return self._json({"ok": True, "job_id": job_id})
 
         return self._json({"error": "not found"}, 404)
 

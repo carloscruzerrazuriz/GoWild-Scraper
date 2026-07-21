@@ -140,14 +140,29 @@
     <!-- ══ Ejecutar ══ -->
     <section class="card">
       <button class="btn primary" id="runBtn">Iniciar</button>
-      <div id="progWrap" class="hidden">
-        <div class="bar"><div id="bar"></div></div>
-        <div class="progline"><span id="progMsg">…</span><span id="progPct"></span></div>
-        <div class="metrics"><span id="rowCount">0</span> filas · <span id="elapsed">0s</span></div>
-      </div>
-      <pre id="log" class="log hidden"></pre>
-      <div id="result" class="result hidden"></div>
+      <p class="runhint" id="runHint">Puedes lanzar hasta 3 a la vez.</p>
+      <div id="globalMsg" class="result bad hidden"></div>
+      <div id="jobs" class="jobs"></div>
     </section>
+
+    <!-- plantilla de tarjeta de job (clonada por JS) -->
+    <template id="jobTpl">
+      <div class="job">
+        <div class="job-head">
+          <b class="job-tool"></b>
+          <button class="job-close" title="Cerrar">✕</button>
+        </div>
+        <div class="banner"><span class="spin"></span><span class="bannerMsg">Trabajando…</span></div>
+        <div class="bars"></div>
+        <div class="metrics">
+          <span><b class="rowCount">0</b> filas</span>
+          <span>·</span><span class="elapsed">0s</span>
+          <span>·</span><span class="speed">— filas/min</span>
+        </div>
+        <div class="alerts hidden"></div>
+        <div class="result hidden"></div>
+      </div>
+    </template>
 
     <section class="card">
       <header><h2>Archivos generados</h2></header>

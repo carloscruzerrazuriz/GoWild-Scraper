@@ -440,7 +440,7 @@ async def _detect_breadcrumb(page):
 
 async def scrape_subcat(page, section_name, subcat_name, subcat_url, progress, page_task,
                         capture_screenshots=True, only_sodimac=True, page_progress_cb=None,
-                        auto_breadcrumb=False):
+                        auto_breadcrumb=False, screenshot_dir=None):
     """Scrapea una subcategoría paginando.
 
     Devuelve dict: {
@@ -556,7 +556,9 @@ async def scrape_subcat(page, section_name, subcat_name, subcat_url, progress, p
                 if i >= len(page_data):
                     break
                 sku = page_data[i].get("SKU") or f"unknown_{page_num}_{i}"
-                img_path = SCREENSHOT_DIR / f"{sku}.jpg"
+                # screenshot_dir por-llamada (parallel-safe); si no viene, la global de siempre
+                sdir = screenshot_dir or SCREENSHOT_DIR
+                img_path = sdir / f"{sku}.jpg"
                 if not img_path.exists():
                     try:
                         await card.scroll_into_view_if_needed()

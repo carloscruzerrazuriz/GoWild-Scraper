@@ -28,6 +28,10 @@ from pathlib import Path
 
 # Paralelismo local: más agresivo que en Colab (ver docstring).
 FAST_WORKERS = 12
+# Presupuesto TOTAL de workers de Fast repartido entre los jobs Fast activos
+# (el server calcula params["_workers"] al lanzar). Evita que 3× Fast disparen
+# 36 requests concurrentes a Sodimac → 429/bloqueo de Cloudflare.
+FAST_WORKER_BUDGET = 12
 
 # UA propio: `maestra_sodimac` no exporta USER_AGENT (sí lo hace sodimac_engine).
 USER_AGENT = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -42,8 +46,22 @@ def _safe(name: str) -> str:
     return re.sub(r"[^\w\s-]", "", str(name)).strip().replace(" ", "_") or "salida"
 
 
+def _outname(base: str, tag: str) -> str:
+    """Nombre de Excel único por job: base_TIMESTAMP[_tag].xlsx.
+    El `tag` (id corto del job) evita colisiones cuando 2 jobs de la misma
+    herramienta terminan en el mismo segundo."""
+    return f"{base}_{_ts()}" + (f"_{tag}" if tag else "") + ".xlsx"
+
+
+def _shots_dir(outdir: Path, tag: str):
+    """Carpeta de screenshots aislada por job (no se pisan entre paralelos)."""
+    d = outdir / "_shots" / (tag or "run")
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 # ── 1. MK7 — Buscador por SKU ───────────────────────────────────────────────
-async def run_mk7(params, emit, outdir: Path):
+async def run_mk7(params, emit, outdir: Path, tag: str = ""):
     """params: {input_path, store_ids, screenshots}. Devuelve la ruta del Excel."""
     from engines import sodimac_engine as se
 
@@ -58,9 +76,7 @@ async def run_mk7(params, emit, outdir: Path):
         raise ValueError("El archivo no tiene SKUs numéricos válidos.")
 
     emit({"type": "info", "msg": f"{len(skus)} SKUs · {len(stores)} tienda(s)"})
-    shots = outdir / "_shots" if params.get("screenshots") else None
-    if shots:
-        shots.mkdir(parents=True, exist_ok=True)
+    shots = _shots_dir(outdir, tag) if params.get("screenshots") else None
     matches = await se.search_skus_mk6(
         skus, stores, headless=True, screenshot_dir=(str(shots) if shots else None),
         progress_cb=_zone_progress(emit, len(stores), {"zone": 0}))
@@ -68,7 +84,7 @@ async def run_mk7(params, emit, outdir: Path):
     if not matches:
         raise RuntimeError("No se encontró ningún SKU en las tiendas seleccionadas.")
 
-    out = outdir / f"MK7_Sodimac_{_ts()}.xlsx"
+    out = outdir / _outname("MK7_Sodimac", tag)
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(matches)} filas)…"})
     se.write_output(df, desc_col, sku_col, easy_col, matches, str(out), stores=stores)
     return out
@@ -106,7 +122,7 @@ async def discover_sections_desktop(emit, include_landing=True):
             for sec, subs in tree]
 
 
-async def run_seccion(params, emit, outdir: Path):
+async def run_seccion(params, emit, outdir: Path, tag: str = ""):
     """params: {section, subcats:[{name,url}], store_ids, only_sodimac, screenshots}."""
     from playwright.async_api import async_playwright
     from playwright_stealth import Stealth
@@ -120,11 +136,9 @@ async def run_seccion(params, emit, outdir: Path):
     section_name = params.get("section") or "Sección"
     only_sod = not params.get("include_non_sodimac")
     shots = params.get("screenshots", False)
-    shot_dir = None
-    if shots:
-        shot_dir = outdir / "_shots"
-        shot_dir.mkdir(parents=True, exist_ok=True)
-        ms.SCREENSHOT_DIR = shot_dir
+    # PARALLEL-SAFE: dir por-job pasado como parámetro a scrape_subcat, NO por la
+    # global ms.SCREENSHOT_DIR (que 2 jobs de Sección se pisarían).
+    shot_dir = _shots_dir(outdir, tag) if shots else None
 
     all_rows = []
     total_units = len(stores) * len(subcats)
@@ -155,7 +169,8 @@ async def run_seccion(params, emit, outdir: Path):
                     res = await ms.scrape_subcat(
                         page, section_name, sc_name, sc_url, prog, None,
                         capture_screenshots=shots, only_sodimac=only_sod,
-                        auto_breadcrumb=(section_name == "Custom"))
+                        auto_breadcrumb=(section_name == "Custom"),
+                        screenshot_dir=shot_dir)
                     for r in res.get("rows", []):
                         if only_sod and "SODIMAC" not in (r.get("Vendedor") or "").upper():
                             continue
@@ -171,21 +186,23 @@ async def run_seccion(params, emit, outdir: Path):
 
     if not all_rows:
         raise RuntimeError("No se obtuvo ninguna fila.")
-    out = outdir / f"Seccion_{_safe(section_name)}_{_ts()}.xlsx"
+    out = outdir / _outname(f"Seccion_{_safe(section_name)}", tag)
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
     ms.write_excel(all_rows, str(out), with_images=shots)
     return out
 
 
 # ── 3. Fast — Precios por mayor (browserless) ───────────────────────────────
-async def run_fast(params, emit, outdir: Path):
-    """params: {store_ids, sections:[str]|None, url:str|None, wholesale_only}."""
+async def run_fast(params, emit, outdir: Path, tag: str = ""):
+    """params: {store_ids, sections:[str]|None, url:str|None, wholesale_only, _workers}."""
     from engines import mayoristas_fast as mf
     from engines import maestra_sodimac as ms
 
     stores = [s for s in ms.ALL_STORES if s["id"] in set(params["store_ids"])]
     if not stores:
         raise ValueError("No seleccionaste ninguna tienda.")
+    # _workers lo fija el server: presupuesto total repartido entre los Fast activos.
+    workers = int(params.get("_workers") or FAST_WORKERS)
     wholesale_only = params.get("wholesale_only", True)
     url_scope = (params.get("url") or "").strip()
     sections = params.get("sections") or None
@@ -214,7 +231,7 @@ async def run_fast(params, emit, outdir: Path):
         rows = await asyncio.to_thread(
             mf.scrape_all_wholesale, cookie, tree, store,
             wholesale_only=wholesale_only, only_sodimac=True,
-            subcat_cb=subcat_cb, workers=FAST_WORKERS, report=report)
+            subcat_cb=subcat_cb, workers=workers, report=report)
         all_rows.extend(rows)
         emit({"type": "count", "rows": len(all_rows)})
 
@@ -224,8 +241,8 @@ async def run_fast(params, emit, outdir: Path):
                      f"(error de red persistente)."})
     if not all_rows:
         raise RuntimeError("No se obtuvo ninguna fila.")
-    tag = "mayoristas" if wholesale_only else "catalogo"
-    out = outdir / f"Fast_{tag}_{_ts()}.xlsx"
+    kind = "mayoristas" if wholesale_only else "catalogo"
+    out = outdir / _outname(f"Fast_{kind}", tag)
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
     ms.write_excel(all_rows, str(out), columns=mf.OUTPUT_COLS, with_images=False)
     return out
@@ -252,7 +269,7 @@ def _zone_progress(emit, total_zones, state):
     return cb
 
 
-async def run_ferni_sku(params, emit, outdir: Path):
+async def run_ferni_sku(params, emit, outdir: Path, tag: str = ""):
     """params: {input_path, store_ids, screenshots}. Puertas: 1 fila por medida."""
     from engines import ferni_sodimac as fs
 
@@ -267,9 +284,7 @@ async def run_ferni_sku(params, emit, outdir: Path):
 
     emit({"type": "info", "msg": f"{len(skus)} SKUs de puertas · {len(stores)} tienda(s)"})
     shots = params.get("screenshots", False)
-    shot_dir = (outdir / "_shots") if shots else None
-    if shot_dir:
-        shot_dir.mkdir(parents=True, exist_ok=True)
+    shot_dir = _shots_dir(outdir, tag) if shots else None
 
     matches = await fs.search_doors(
         skus, stores, headless=True,
@@ -278,7 +293,7 @@ async def run_ferni_sku(params, emit, outdir: Path):
     if not matches:
         raise RuntimeError("No se encontró ninguna puerta en las tiendas seleccionadas.")
 
-    out = outdir / f"Ferni_SKU_{_ts()}.xlsx"
+    out = outdir / _outname("Ferni_SKU", tag)
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(matches)} filas)…"})
     fs.write_output(df, desc_col, sku_col, easy_col, matches, str(out),
                     stores=stores, embed_images=shots)
@@ -286,7 +301,7 @@ async def run_ferni_sku(params, emit, outdir: Path):
 
 
 # ── 5. Ferni Sección — puertas y más, por categoría ─────────────────────────
-async def run_ferni_seccion(params, emit, outdir: Path):
+async def run_ferni_seccion(params, emit, outdir: Path, tag: str = ""):
     """params: {section, subcats:[{name,url}], store_ids, screenshots}."""
     from engines import ferni_maestra_sodimac as fm
 
@@ -298,9 +313,7 @@ async def run_ferni_seccion(params, emit, outdir: Path):
         raise ValueError("Falta seleccionar tienda(s) o subcategoría(s).")
 
     shots = params.get("screenshots", False)
-    shot_dir = (outdir / "_shots") if shots else None
-    if shot_dir:
-        shot_dir.mkdir(parents=True, exist_ok=True)
+    shot_dir = _shots_dir(outdir, tag) if shots else None
 
     total = len(stores) * len(subcats)
     state = {"n": 0, "rows": 0}
@@ -335,7 +348,7 @@ async def run_ferni_seccion(params, emit, outdir: Path):
         raise RuntimeError("No se obtuvo ninguna fila.")
 
     emit({"type": "count", "rows": len(rows)})
-    out = outdir / f"Ferni_Seccion_{_safe(section_name)}_{_ts()}.xlsx"
+    out = outdir / _outname(f"Ferni_Seccion_{_safe(section_name)}", tag)
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(rows)} filas)…"})
     fm.write_excel(rows, str(out), with_images=shots)
     return out
