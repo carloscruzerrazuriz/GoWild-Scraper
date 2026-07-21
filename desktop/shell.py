@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Carlos Cruz Errazuriz. All rights reserved.
 # Proprietary - see LICENSE file. No unauthorized use, redistribution, or reverse engineering.
-"""GoWild Desktop — shell de arranque (esto es lo que se empaqueta como .exe).
+"""Vulpex — shell de arranque (esto es lo que se empaqueta como .exe).
 
 MISMO MODELO QUE LOS COLAB (thin-launcher), pero de escritorio:
 
@@ -58,7 +58,7 @@ import atexit
 import signal
 import tempfile
 
-_TMP_PREFIX = "gowild-code-"
+_TMP_PREFIX = "vulpex-code-"
 _CODE_DIR: Path | None = None
 
 
@@ -128,7 +128,7 @@ def update_code() -> Path | None:
     _sweep_stale()
     try:
         _log("Descargando la última versión desde GitHub…")
-        req = urllib.request.Request(ZIP_URL, headers={"User-Agent": "GoWild-Desktop"})
+        req = urllib.request.Request(ZIP_URL, headers={"User-Agent": "Vulpex-Desktop"})
         with urllib.request.urlopen(req, timeout=60) as r:
             data = r.read()
         tmp = Path(tempfile.mkdtemp(prefix=_TMP_PREFIX))
@@ -153,7 +153,7 @@ def ensure_chromium():
 
     ⚠️ NUNCA usar `sys.executable -m playwright install` acá: dentro de un .exe
     de PyInstaller `sys.executable` ES EL PROPIO EJECUTABLE, no un intérprete de
-    Python. Esa llamada relanzaba GoWild.exe, que volvía a descargar el código y
+    Python. Esa llamada relanzaba Vulpex.exe, que volvía a descargar el código y
     a llamar a esta función → bucle infinito de descargar/borrar (bug real
     reportado en la v1).
 
@@ -217,12 +217,12 @@ def main():
     # Guardia anti-bucle: si un subproceso relanzara el ejecutable (fue el bug de
     # la v1 con `sys.executable`), el hijo detecta la marca y se detiene en vez
     # de volver a descargar el código y relanzarse otra vez.
-    if os.environ.get("GOWILD_RUNNING") == "1":
-        print("  [GoWild] Instancia hija detectada; no se relanza.", flush=True)
+    if os.environ.get("VULPEX_RUNNING") == "1":
+        print("  [Vulpex] Instancia hija detectada; no se relanza.", flush=True)
         return 0
-    os.environ["GOWILD_RUNNING"] = "1"
+    os.environ["VULPEX_RUNNING"] = "1"
 
-    print("\n  GoWild Desktop\n  " + "─" * 40, flush=True)
+    print("\n  Vulpex\n  " + "─" * 40, flush=True)
     root = update_code()
     if root is None:
         input("\n  Presiona Enter para salir…")

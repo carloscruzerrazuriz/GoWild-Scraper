@@ -1,4 +1,4 @@
-# GoWild Desktop — dependencias del ejecutable.
+# Vulpex — dependencias del ejecutable.
 # El servidor usa sólo stdlib (http.server) a propósito: menos deps = .exe más
 # chico y build de PyInstaller menos frágil. Estas son las de los engines.
 playwright>=1.40
