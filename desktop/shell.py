@@ -194,6 +194,25 @@ def free_port(start=DEFAULT_PORT) -> int:
     return start
 
 
+def _minimize_console():
+    """Minimiza la ventana de consola en Windows una vez abierta la app.
+
+    La consola es el servidor: no se puede cerrar sin apagar la app. Pero sí se
+    puede mandar al fondo para que no estorbe, conservándola disponible por si
+    hay que ver un error o cerrar la app. Usa la API Win32 vía ctypes (sin
+    dependencias). En Mac/Linux es un no-op.
+    """
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 6)  # SW_MINIMIZE = 6
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def main():
     # Guardia anti-bucle: si un subproceso relanzara el ejecutable (fue el bug de
     # la v1 con `sys.executable`), el hijo detecta la marca y se detiene en vez
@@ -222,10 +241,15 @@ def main():
     _log(f"Servidor local en {url}")
     _log(f"Los Excel se guardan en: {server.OUTPUT_DIR}")
     print("  " + "─" * 40, flush=True)
-    print("  Deja esta ventana abierta mientras trabajas.", flush=True)
-    print("  Para cerrar: cierra esta ventana o pulsa Ctrl+C.\n", flush=True)
+    print("  La app está abierta en tu navegador.", flush=True)
+    print("  Esta ventana se minimiza sola; NO la cierres mientras trabajas.", flush=True)
+    print("  Para salir de la app: cierra esta ventana.\n", flush=True)
 
-    threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    def _open_and_minimize():
+        webbrowser.open(url)
+        _minimize_console()
+
+    threading.Timer(1.2, _open_and_minimize).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
