@@ -20,9 +20,11 @@ body{
 }
 .brand{display:flex; gap:10px; align-items:center; margin-bottom:22px}
 .logo{
-  width:38px;height:38px;border-radius:9px;display:grid;place-items:center;color:#fff;
-  background:linear-gradient(135deg,var(--accent),#1b5e8f); font-weight:700; letter-spacing:.5px;
+  width:38px;height:38px;border-radius:9px;overflow:hidden;display:grid;place-items:center;
+  color:#fff;background:linear-gradient(135deg,var(--accent),#1b5e8f);
+  font-weight:700; letter-spacing:.5px;
 }
+.logo img{width:100%;height:100%;object-fit:cover;display:block}
 .brand h1{font-size:15px;margin:0}
 .brand span{font-size:11px;color:var(--dim)}
 nav{display:flex;flex-direction:column;gap:6px}

@@ -57,5 +57,5 @@ exe = EXE(
     runtime_tmpdir=None,
     console=True,          # el shell informa estado y hay que dejarla abierta
     disable_windowed_traceback=False,
-    icon=None,
+    icon="gowild.ico",     # ícono del .exe (horneado; cambiarlo obliga a recompilar)
 )
