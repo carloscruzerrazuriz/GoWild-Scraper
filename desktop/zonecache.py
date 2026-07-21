@@ -44,7 +44,7 @@ import unicodedata
 import urllib.request
 from pathlib import Path
 
-CACHE_FILE = Path.home() / "Documents" / "Vulpex" / ".zonas.json"
+CACHE_FILE = Path.home() / "Documents" / "Cruzer" / ".zonas.json"
 # Tope conservador: se midió >60 min de vida real, pero la validación manda.
 MAX_AGE = 45 * 60
 PROBE_URL = "https://www.sodimac.cl/sodimac-cl/lista/cat6930448/camping"

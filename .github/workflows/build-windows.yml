@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Carlos Cruz Errazuriz. All rights reserved. Proprietary.
 #
-# Compila Vulpex para Windows en un runner de GitHub.
+# Compila Cruzer para Windows en un runner de GitHub.
 #
 # Por qué acá y no en el Mac del mantenedor: PyInstaller NO compila cruzado —
 # un .exe de Windows sólo se puede construir en Windows. Este workflow usa un
@@ -45,38 +45,38 @@ jobs:
 
       - name: Compilar el .exe
         working-directory: desktop/build
-        run: pyinstaller --clean --noconfirm vulpex.spec
+        run: pyinstaller --clean --noconfirm cruzer.spec
 
       - name: Verificar que el ejecutable arranca
         # No lo dejamos servir (abriría un navegador y quedaría colgado): sólo
         # comprobamos que el binario existe y no está corrupto.
         run: |
-          $exe = "desktop/build/dist/Vulpex.exe"
+          $exe = "desktop/build/dist/Cruzer.exe"
           if (!(Test-Path $exe)) { throw "No se generó $exe" }
           $mb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
-          Write-Host "OK: Vulpex.exe generado ($mb MB)"
+          Write-Host "OK: Cruzer.exe generado ($mb MB)"
           if ($mb -lt 8) { throw "El .exe pesa $mb MB: sospechosamente chico" }
 
       - name: Publicar como artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Vulpex-Windows
-          path: desktop/build/dist/Vulpex.exe
+          name: Cruzer-Windows
+          path: desktop/build/dist/Cruzer.exe
           retention-days: 30
 
       - name: Crear Release (sólo en tags desktop-v*)
         if: startsWith(github.ref, 'refs/tags/desktop-v')
         uses: softprops/action-gh-release@v2
         with:
-          files: desktop/build/dist/Vulpex.exe
-          name: Vulpex ${{ github.ref_name }}
+          files: desktop/build/dist/Cruzer.exe
+          name: Cruzer ${{ github.ref_name }}
           body: |
-            **Vulpex para Windows**
+            **Cruzer para Windows**
 
-            Descarga `Vulpex.exe`, déjalo en el Escritorio y haz doble clic.
+            Descarga `Cruzer.exe`, déjalo en el Escritorio y haz doble clic.
 
             - La primera vez instala el navegador (~150 MB), sólo una vez.
             - Se actualiza solo: baja el código desde GitHub en cada arranque.
-            - Los Excel quedan en `Documentos\Vulpex`.
+            - Los Excel quedan en `Documentos\Cruzer`.
 
             Herramientas: MK7 · Sección · Fast (precios por mayor) · Ferni (SKU y Sección).

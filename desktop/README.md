@@ -1,4 +1,4 @@
-# Vulpex
+# Cruzer
 
 App de escritorio que corre los scrapers **en el PC del usuario** en vez de Colab.
 
@@ -9,7 +9,7 @@ App de escritorio que corre los scrapers **en el PC del usuario** en vez de Cola
 | IP | Datacenter de Google (Cloudflare hostil) | Residencial |
 | Sesión | Se corta (de ahí los checkpoints) | Sin límite |
 | Paralelismo | Conservador | Agresivo |
-| Archivos | Descarga manual | Directo a `Documentos/Vulpex` |
+| Archivos | Descarga manual | Directo a `Documentos/Cruzer` |
 
 ## Herramientas
 

@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 # Copyright (c) 2026 Carlos Cruz Errazuriz. All rights reserved. Proprietary.
-"""PyInstaller spec de Vulpex (Windows).
+"""PyInstaller spec de Cruzer (Windows).
 
 CLAVE: el .exe NO empaqueta el código del proyecto (engines/, desktop/server.py,
 la UI…). Sólo lleva el runtime de Python, las librerías de terceros y el shell.
@@ -49,7 +49,7 @@ pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas, [],
-    name="Vulpex",
+    name="Cruzer",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -57,5 +57,5 @@ exe = EXE(
     runtime_tmpdir=None,
     console=True,          # el shell informa estado y hay que dejarla abierta
     disable_windowed_traceback=False,
-    icon="vulpex.ico",     # ícono del .exe (horneado; cambiarlo obliga a recompilar)
+    icon="cruzer.ico",     # ícono del .exe (horneado; cambiarlo obliga a recompilar)
 )

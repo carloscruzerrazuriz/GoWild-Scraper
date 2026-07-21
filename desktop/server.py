@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Carlos Cruz Errazuriz. All rights reserved.
 # Proprietary - see LICENSE file. No unauthorized use, redistribution, or reverse engineering.
-"""Servidor local de Vulpex.
+"""Servidor local de Cruzer.
 
 Levanta un HTTP server en 127.0.0.1 (sólo loopback: nadie de la red puede
 entrar) que sirve el frontend y expone las 3 herramientas. El progreso viaja al
@@ -23,7 +23,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
-OUTPUT_DIR = Path.home() / "Documents" / "Vulpex"
+OUTPUT_DIR = Path.home() / "Documents" / "Cruzer"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR = OUTPUT_DIR / "_uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
