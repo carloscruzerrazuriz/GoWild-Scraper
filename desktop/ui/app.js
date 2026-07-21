@@ -68,16 +68,22 @@ async function fetchSections(btn, ferni = false) {
   btn.textContent = "Abriendo navegador… (~20s)";
   btn.disabled = true;
   try {
-    const tree = await (await fetch("/api/sections" + (ferni ? "?ferni=1" : ""))).json();
-    if (tree.error) throw new Error(tree.error);
+    const res = await fetch("/api/sections" + (ferni ? "?ferni=1" : ""));
+    const tree = await res.json();
+    if (!res.ok || tree.error) throw new Error(tree.error || ("HTTP " + res.status));
     if (ferni) state.ferniSections = tree; else state.sections = tree;
     return tree;
+  } catch (e) {
+    // Antes el error se tragaba en silencio (el botón sólo revertía). Ahora se muestra.
+    showResult("No se pudieron cargar las secciones: " + e.message, true);
+    return null;
   } finally { btn.textContent = old; btn.disabled = false; }
 }
 
 /* ── Ferni Sección ── */
 $("#fsLoadSections").onclick = async (e) => {
   const tree = await fetchSections(e.target, true);
+  if (!tree) return;
   $("#fsWrap").classList.remove("hidden");
   $("#fsSelect").innerHTML = tree.map((s, i) =>
     `<option value="${i}">${s.section} (${s.subcats.length})</option>`).join("");
@@ -99,6 +105,7 @@ $$("[data-fsub]").forEach(b => b.onclick = () => {
 });
 $("#loadSections").onclick = async (e) => {
   const tree = await fetchSections(e.target);
+  if (!tree) return;
   $("#secWrap").classList.remove("hidden");
   $("#secSelect").innerHTML = tree.map((s, i) =>
     `<option value="${i}">${s.section} (${s.subcats.length})</option>`).join("");
@@ -126,6 +133,7 @@ $$("[name=fastScope]").forEach(r => r.onchange = () => {
 });
 $("#fastLoadSections").onclick = async (e) => {
   const tree = await fetchSections(e.target);
+  if (!tree) return;
   $("#fastSections").innerHTML = tree.map(s =>
     `<label><input type="checkbox" class="fsec" value="${s.section}" checked> ${s.section}</label>`).join("");
 };

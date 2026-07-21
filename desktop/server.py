@@ -16,11 +16,26 @@ import asyncio
 import json
 import mimetypes
 import queue
+import sys
 import threading
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
+
+
+def _new_loop():
+    """Event loop apto para Playwright, incluso en un hilo secundario.
+
+    En WINDOWS, Playwright lanza su driver como SUBPROCESO y eso requiere un
+    ProactorEventLoop; el SelectorEventLoop no soporta subprocesos y revienta con
+    NotImplementedError apenas se intenta abrir el navegador (era el fallo de
+    'Cargar secciones': el request moría al instante). Como el servidor corre cada
+    tarea en un hilo, forzamos Proactor explícitamente en Windows.
+    """
+    if sys.platform == "win32" and hasattr(asyncio, "ProactorEventLoop"):
+        return asyncio.ProactorEventLoop()
+    return asyncio.new_event_loop()
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
 OUTPUT_DIR = Path.home() / "Documents" / "Cruzer"
@@ -41,7 +56,7 @@ def _emit(ev):
 def _run_job(tool, params):
     """Corre la herramienta en un hilo con su propio event loop."""
     from orchestrators import TOOLS
-    loop = asyncio.new_event_loop()
+    loop = _new_loop()
     asyncio.set_event_loop(loop)
     try:
         out = loop.run_until_complete(TOOLS[tool]["run"](params, _emit, OUTPUT_DIR))
@@ -106,7 +121,7 @@ class Handler(BaseHTTPRequestHandler):
                 from orchestrators import discover_sections_desktop
                 q = parse_qs(p.query)
                 incl = (q.get("ferni") or ["0"])[0] != "1"
-                loop = asyncio.new_event_loop()
+                loop = _new_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     tree = loop.run_until_complete(
@@ -115,7 +130,9 @@ class Handler(BaseHTTPRequestHandler):
                     loop.close()
                 return self._json(tree)
             except Exception as e:  # noqa: BLE001
-                return self._json({"error": str(e)}, 500)
+                tb = traceback.format_exc()
+                print("  [ERROR /api/sections]\n" + tb, flush=True)  # visible en la consola
+                return self._json({"error": str(e), "detail": tb[-1500:]}, 500)
 
         if route == "/api/events":
             return self._sse()
