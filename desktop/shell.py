@@ -222,6 +222,15 @@ def main():
         return 0
     os.environ["CRUZER_RUNNING"] = "1"
 
+    # Navegador de Playwright en ruta PERSISTENTE (no en el _MEI temporal del
+    # bundle, que se borra en cada ejecución → el navegador "desaparecía" y
+    # ensure_chromium lo re-descargaba cada vez). Debe fijarse ANTES de
+    # ensure_chromium. Sólo Windows; en Mac/Linux se deja el default.
+    if os.name == "nt":
+        _bdir = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / "Cruzer" / "browsers"
+        _bdir.mkdir(parents=True, exist_ok=True)
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(_bdir)
+
     print("\n  Cruzer\n  " + "─" * 40, flush=True)
     root = update_code()
     if root is None:

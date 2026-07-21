@@ -37,11 +37,52 @@ def _new_loop():
         return asyncio.ProactorEventLoop()
     return asyncio.new_event_loop()
 
+import os
+
 UI_DIR = Path(__file__).resolve().parent / "ui"
 OUTPUT_DIR = Path.home() / "Documents" / "Cruzer"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR = OUTPUT_DIR / "_uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# ── Navegador de Playwright en una carpeta PERSISTENTE ──────────────────────
+# En el .exe (PyInstaller onefile), Playwright por defecto busca/instala el
+# navegador dentro de la carpeta temporal _MEIxxxx del bundle, que se BORRA en
+# cada ejecución → "Executable doesn't exist" al abrir el navegador. Fijamos una
+# ruta estable (%LOCALAPPDATA%\Cruzer\browsers) para que se descargue UNA vez y
+# el runtime lo encuentre siempre. Se hace acá (código de GitHub) para no
+# recompilar el .exe. Sólo en Windows; en Mac/Linux se deja el default.
+if sys.platform == "win32":
+    _BROWSERS = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData/Local")) / "Cruzer" / "browsers"
+    _BROWSERS.mkdir(parents=True, exist_ok=True)
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(_BROWSERS)
+
+
+def _ensure_browser():
+    """Garantiza que Chromium exista en PLAYWRIGHT_BROWSERS_PATH; si no, lo baja.
+
+    Se invoca al arrancar el servidor. Instala vía el driver de Node de Playwright
+    (NUNCA sys.executable: en el .exe eso relanzaría Cruzer.exe). Persiste, así que
+    sólo descarga la primera vez.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            exe = p.chromium.executable_path
+            if exe and Path(exe).exists():
+                return
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import subprocess
+        from playwright._impl._driver import compute_driver_executable, get_driver_env
+        drv = compute_driver_executable()
+        cmd = ([str(drv[0]), str(drv[1])] if isinstance(drv, (tuple, list)) else [str(drv)])
+        print("  Descargando el navegador a una ubicación permanente (una vez, ~150 MB)…", flush=True)
+        subprocess.run(cmd + ["install", "chromium"], env=get_driver_env(), check=False)
+        print("  Navegador listo.", flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"  (aviso: no pude preparar el navegador: {e})", flush=True)
 
 # Estado del job en curso (uno a la vez: son scrapes pesados).
 JOB = {"running": False, "events": None, "result": None, "error": None, "tool": None}
@@ -216,5 +257,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serve(port=8733):
+    _ensure_browser()   # navegador en ruta persistente antes de aceptar pedidos
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     return httpd
