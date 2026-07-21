@@ -19,6 +19,11 @@ _LIB_CHECK = "/usr/lib/x86_64-linux-gnu/libatk-1.0.so.0"
 
 
 def _ensure_playwright_system_deps() -> None:
+    # SÓLO en Linux (Colab): en Windows/Mac no hay apt-get ni /tmp, y el navegador
+    # se instala/gestiona aparte. Correr esto en la app de escritorio (Cruzer)
+    # sólo generaba ruido y un error al tocar la ruta '\tmp\...' inexistente.
+    if not sys.platform.startswith("linux"):
+        return
     if _SENTINEL.exists():
         return
     if os.path.exists(_LIB_CHECK):

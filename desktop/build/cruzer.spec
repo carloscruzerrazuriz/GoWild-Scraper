@@ -18,16 +18,19 @@ from PyInstaller.utils.hooks import collect_all
 
 datas, binaries, hiddenimports = [], [], []
 
-# Playwright trae un driver Node que hay que arrastrar entero.
-for pkg in ("playwright", "playwright_stealth"):
+# Paquetes "pesados" que usa el código descargado: hay que RECOLECTARLOS COMPLETOS
+# (submódulos + binarios + datos), no basta listarlos como hiddenimport. numpy 2.x
+# en particular carga extensiones C (numpy._core._multiarray_umath, _exceptions…)
+# que sólo aparecen con collect_all; sin esto pandas/numpy revientan en runtime
+# con "Importing the numpy C-extensions failed" (bug real de la v6 en Windows).
+# playwright además arrastra su driver Node.
+for pkg in ("playwright", "playwright_stealth", "numpy", "pandas",
+            "openpyxl", "bs4", "PIL"):
     d, b, h = collect_all(pkg)
     datas += d; binaries += b; hiddenimports += h
 
-# Librerías que sólo usa el código descargado en runtime.
+# Stdlib que el bootstrap/servidor usan (por si el análisis no las detecta).
 hiddenimports += [
-    "pandas", "numpy",
-    "openpyxl", "openpyxl.styles", "openpyxl.drawing.image", "openpyxl.utils",
-    "bs4", "PIL", "PIL.Image",
     "asyncio", "queue", "http.server", "socketserver",
     "urllib.request", "zipfile", "json", "csv", "sqlite3",
 ]
