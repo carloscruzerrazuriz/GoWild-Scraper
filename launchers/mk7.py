@@ -384,14 +384,14 @@ def run():
         # Filter rows with data in sku_col
         df_filt = df[df[sku_col].notna()].copy()
         df_filt[sku_col] = df_filt[sku_col].astype(str).str.strip()
+        # Quitar decimales tipo "12345.0" del df para que matchee al escribir el output
+        df_filt[sku_col] = df_filt[sku_col].apply(lambda s: s.split(".")[0] if pd.notna(s) and re.fullmatch(r"\d+\.0+", str(s)) else s)
         df_filt = df_filt[df_filt[sku_col] != ""]
         df_filt = df_filt[~df_filt[sku_col].str.lower().isin(["nan","none","por definir"])]
         # Build skus_with_meta + skus_list
         skus_meta, seen = [], set()
         for _, r in df_filt.iterrows():
             sku = str(r[sku_col]).strip()
-            # Quitar decimales tipo "12345.0"
-            if re.fullmatch(r"\d+\.0+", sku): sku = sku.split(".")[0]
             if not sku or sku in seen: continue
             seen.add(sku)
             skus_meta.append({"sku": sku,
