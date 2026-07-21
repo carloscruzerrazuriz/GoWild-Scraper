@@ -26,17 +26,29 @@ import openpyxl
 from openpyxl.drawing.image import Image as OpenpyxlImage
 from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, TwoCellAnchor
 
-import questionary
-from questionary import Style as QStyle
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from rich.progress import (
-    Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn,
-)
-from rich import box
-
-console = Console()
+# questionary + rich son SÓLO para la interfaz de terminal (pick_stores/banner/
+# section_summary/main). Ni los launchers de Colab (ipywidgets) ni la app de
+# escritorio (Cruzer) las usan. Import perezoso vía try/except para que el módulo
+# CARGUE aunque no estén instaladas (el .exe no las empaqueta a propósito). Si
+# alguien llama una función CLI sin ellas, fallará ahí — pero nadie lo hace.
+try:
+    import questionary
+    from questionary import Style as QStyle
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.progress import (
+        Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn,
+    )
+    from rich import box
+    console = Console()
+    _CLI_LIBS = True
+except ModuleNotFoundError:
+    questionary = QStyle = Console = Panel = Table = None
+    Progress = SpinnerColumn = BarColumn = TextColumn = None
+    TimeElapsedColumn = MofNCompleteColumn = box = None
+    console = None
+    _CLI_LIBS = False
 
 BASE_URL = "https://www.sodimac.cl/sodimac-cl"
 # Resolve project dir from this file's location so the scraper is portable
@@ -161,7 +173,7 @@ QSTYLE = QStyle([
     ("highlighted", "fg:#00bcd4 bold"),
     ("selected", "fg:#00d97e"),
     ("instruction", "fg:#888888"),
-])
+]) if _CLI_LIBS else None
 
 
 # ─────────────────────────────────────────  Zone & autocomplete  ───────────
