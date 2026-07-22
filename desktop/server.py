@@ -235,6 +235,18 @@ class Handler(BaseHTTPRequestHandler):
                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                               {"Content-Disposition": f'attachment; filename="{path.name}"'})
 
+        if route == "/api/template":
+            # genera el 'formato de carga' al vuelo (mismo diseño que el Colab)
+            tool = (parse_qs(p.query).get("tool") or ["mk7"])[0]
+            try:
+                from orchestrators import build_template_bytes
+                fname, data = build_template_bytes(tool)
+            except Exception as e:  # noqa: BLE001
+                return self._json({"error": str(e)}, 500)
+            return self._send(200, data,
+                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                              {"Content-Disposition": f'attachment; filename="{fname}"'})
+
         if route == "/api/outputs":
             files = sorted(OUTPUT_DIR.glob("*.xlsx"), key=lambda f: -f.stat().st_mtime)[:20]
             out = []

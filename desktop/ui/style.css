@@ -144,6 +144,9 @@ kbd{background:var(--panel2);border:1px solid var(--line2);border-bottom-width:2
 .switch input:checked{background:var(--accent)}
 .switch input:checked::after{transform:translateX(16px)}
 
+.minilink{display:inline-block;margin-top:8px;font-size:var(--t-xs);color:var(--accent);
+  text-decoration:none;cursor:pointer;transition:var(--ease)}
+.minilink:hover{text-decoration:underline}
 .btn.ghost{background:var(--panel2);border:1px solid var(--line);color:var(--tx2);border-radius:var(--r-sm);
   padding:9px 14px;font:inherit;font-size:var(--t-sm);cursor:pointer;transition:var(--ease)}
 .btn.ghost:hover{border-color:var(--accent-line);color:var(--tx)}
