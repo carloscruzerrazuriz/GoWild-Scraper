@@ -144,6 +144,7 @@ async def run_mk7(params, emit, outdir: Path, tag: str = ""):
         raise RuntimeError("No se encontró ningún SKU en las tiendas seleccionadas.")
 
     out = outdir / _outname("MK7_Sodimac", tag)
+    emit({"type": "count", "rows": len(matches)})
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(matches)} filas)…"})
     se.write_output(df, desc_col, sku_col, easy_col, matches, str(out), stores=stores)
     return out
@@ -267,6 +268,7 @@ async def run_fast(params, emit, outdir: Path, tag: str = ""):
     sections = params.get("sections") or None
 
     all_rows, report = [], []
+    prog = {"rows": 0}  # contador acumulado en vivo (Fast barre 1 tienda ~9 min)
     for i, store in enumerate(stores, 1):
         emit({"type": "info", "msg": f"[{i}/{len(stores)}] {store['name']}: fijando zona…"})
         if url_scope:
@@ -286,12 +288,17 @@ async def run_fast(params, emit, outdir: Path, tag: str = ""):
         def subcat_cb(done, total, sec, name, kept, scanned, status=None):
             emit({"type": "progress", "phase": "subcat", "done": done, "total": total,
                   "msg": f"{sec[:22]} · {name[:22]}"})
+            # filas EN VIVO: acumula lo conservado por subcat (antes el count solo
+            # salía al terminar la tienda entera → ~9 min en 0).
+            prog["rows"] += kept
+            emit({"type": "count", "rows": prog["rows"]})
 
         rows = await asyncio.to_thread(
             mf.scrape_all_wholesale, cookie, tree, store,
             wholesale_only=wholesale_only, only_sodimac=True,
             subcat_cb=subcat_cb, workers=workers, report=report)
         all_rows.extend(rows)
+        prog["rows"] = len(all_rows)  # reconcilia con el total real de la tienda
         emit({"type": "count", "rows": len(all_rows)})
 
     if report:
@@ -323,6 +330,10 @@ def _zone_progress(emit, total_zones, state):
                   "total": ev.get("total_batches_in_zone", 1),
                   "msg": f"{ev['store']['name']} · lote "
                          f"{ev.get('batches_done_in_zone')}/{ev.get('total_batches_in_zone')}"})
+            # contador de filas EN VIVO: antes MK7/Ferni SKU mostraban 0 todo el
+            # rato (solo emitían progreso, nunca 'count') → parecía que no capturaba.
+            state["rows"] = state.get("rows", 0) + ev.get("found_in_batch", 0)
+            emit({"type": "count", "rows": state["rows"]})
         elif e == "zone_end" and ev.get("zone_failed"):
             emit({"type": "warn", "msg": f"No se pudo fijar zona en {ev['store']['name']}"})
     return cb
@@ -353,6 +364,7 @@ async def run_ferni_sku(params, emit, outdir: Path, tag: str = ""):
         raise RuntimeError("No se encontró ninguna puerta en las tiendas seleccionadas.")
 
     out = outdir / _outname("Ferni_SKU", tag)
+    emit({"type": "count", "rows": len(matches)})
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(matches)} filas)…"})
     fs.write_output(df, desc_col, sku_col, easy_col, matches, str(out),
                     stores=stores, embed_images=shots)
