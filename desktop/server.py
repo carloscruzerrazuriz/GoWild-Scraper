@@ -106,6 +106,24 @@ def _active_fast_count():
     return sum(1 for j in JOBS.values() if j["running"] and j["tool"] == "fast")
 
 
+# EXPERIMENTAL: autorregulación de carga sobre Sodimac. Los jobs CON NAVEGADOR que
+# apuntan a Sodimac (Ferni siempre; MK7/Sección sólo si retailer=sodimac) compiten
+# con Fast por el mismo techo anti-bot de la misma IP. Falabella/Construmart pegan
+# a OTROS sitios → no cuentan. Se usa para descontar workers al lanzar un Fast.
+_SODIMAC_BROWSER_TOOLS = {"ferni_sku", "ferni_seccion"}
+
+
+def _sodimac_browser_jobs():
+    n = 0
+    for j in JOBS.values():
+        if not j["running"]:
+            continue
+        t, r = j["tool"], j.get("retailer", "sodimac")
+        if t in _SODIMAC_BROWSER_TOOLS or (t in ("mk7", "seccion") and r == "sodimac"):
+            n += 1
+    return n
+
+
 def _gc_jobs(ttl=300):
     """Saca del registro los jobs terminados hace más de `ttl` s."""
     now = time.time()
@@ -372,12 +390,17 @@ class Handler(BaseHTTPRequestHandler):
                 job_id = uuid.uuid4().hex[:12]
                 JOBS[job_id] = {"running": True, "events": queue.Queue(),
                                 "result": None, "error": None, "tool": tool,
+                                "retailer": params.get("retailer", "sodimac"),
                                 "done_at": None}
                 # Presupuesto de workers de Fast repartido entre los Fast activos
                 # (incluye este job, recién registrado): carga total ~constante.
+                # EXPERIMENTAL: además descuenta ~2 workers por cada job CON NAVEGADOR
+                # que también le pega a Sodimac, para no sobrecargar la IP al mezclar
+                # herramientas (era la causa de los challenges/429). Si molesta, se saca.
                 if tool == "fast":
                     n_fast = _active_fast_count()
-                    params["_workers"] = max(3, FAST_WORKER_BUDGET // max(1, n_fast))
+                    budget = max(2, FAST_WORKER_BUDGET - 2 * _sodimac_browser_jobs())
+                    params["_workers"] = max(2, budget // max(1, n_fast))
             threading.Thread(target=_run_job, args=(job_id, tool, params),
                              daemon=True).start()
             return self._json({"ok": True, "job_id": job_id})

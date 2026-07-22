@@ -332,22 +332,26 @@ function fmtDur(s) {
 function streamJob(jobId, card) {
   const q = (s) => card.querySelector(s);
   const t0 = Date.now();
-  let rows = 0, frac = 0;   // frac = avance global (0..1) para el ETA
+  let rows = 0, frac = 0, etaShown = false, tick = 0;   // frac = avance global (0..1)
   const speed = () => {
     const min = (Date.now() - t0) / 60000;
     if (min > 0.05 && rows > 0) q(".speed").textContent = `${Math.round(rows / min)} filas/min`;
   };
+  // ETA en MINUTOS, se refresca cada 20 s (no cada segundo).
   const eta = () => {
     const el = (Date.now() - t0) / 1000;
     if (frac > 0.01 && frac < 0.995 && el > 6) {
-      q(".eta").textContent = "~" + fmtDur(el * (1 - frac) / frac) + " restante";
+      const mins = Math.max(1, Math.round(el * (1 - frac) / frac / 60));
+      q(".eta").textContent = `~${mins} min restante`;
       q(".eta-sep").classList.remove("hidden");
+      etaShown = true;
     }
   };
   const timer = setInterval(() => {
     const s = Math.round((Date.now() - t0) / 1000);
     q(".elapsed").textContent = fmtDur(s);
-    speed(); eta();
+    speed();
+    if (++tick % 20 === 0) eta();   // refresco del ETA cada 20 s
   }, 1000);
 
   const es = new EventSource("/api/events?job=" + encodeURIComponent(jobId));
@@ -360,7 +364,7 @@ function streamJob(jobId, card) {
       row.querySelector(".barcount").textContent = ev.total ? `${ev.done}/${ev.total}` : "";
       row.querySelector(".barmsg").textContent = ev.msg || "";
       if (ev.msg) q(".curaction").textContent = ev.msg;
-      if (typeof ev.frac === "number") { frac = ev.frac; eta(); }
+      if (typeof ev.frac === "number") { frac = ev.frac; if (!etaShown) eta(); }  // 1er ETA apenas hay avance
     } else if (ev.type === "count") {
       rows = ev.rows; q(".rowCount").textContent = ev.rows; speed();
     } else if (ev.type === "info") {

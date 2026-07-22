@@ -123,6 +123,17 @@ def build_template_bytes(tool: str):
 
 
 # ── 1. MK7 — Buscador por SKU ───────────────────────────────────────────────
+def _page_progress_cb(emit, store_name, sc_name):
+    """Tercera barra 'Páginas': solo emite cuando el paginador YA reveló el total
+    (page_progress_cb da (page_num, total_pages); total_pages es None hasta que se
+    detecta). Así la barra aparece "cuando corresponde" con x/n real."""
+    def cb(page_num, total_pages):
+        if total_pages:
+            emit({"type": "progress", "phase": "pagina", "done": page_num, "total": total_pages,
+                  "msg": f"{store_name} · {sc_name} · pág {page_num}/{total_pages}"})
+    return cb
+
+
 def _mk7_positional_progress(emit, total_stores):
     """Adapta el progress_cb POSICIONAL de Falabella/Construmart
     (i, total, store, count, rows_so_far) al stream de eventos del desktop."""
@@ -324,7 +335,8 @@ async def run_seccion(params, emit, outdir: Path, tag: str = ""):
                         page, section_name, sc_name, sc_url, prog, None,
                         capture_screenshots=shots, only_sodimac=only_sod,
                         auto_breadcrumb=(section_name == "Custom"),
-                        screenshot_dir=shot_dir)
+                        screenshot_dir=shot_dir,
+                        page_progress_cb=_page_progress_cb(emit, store["name"], sc_name))
                     for r in res.get("rows", []):
                         if only_sod and "SODIMAC" not in (r.get("Vendedor") or "").upper():
                             continue
@@ -382,7 +394,8 @@ async def _run_seccion_falabella(params, emit, outdir, tag=""):
                           "msg": f"{store['name']} · {section_name} · {sc_name}",
                           "frac": ((si - 1) * n_sub + sj) / (n_st * n_sub)})
                     res = await mf.scrape_subcat(page, section_name, sc_name, sc_url, prog, None,
-                                                 download_images=shots, only_falabella=only_fa)
+                                                 download_images=shots, only_falabella=only_fa,
+                                                 page_progress_cb=_page_progress_cb(emit, store["name"], sc_name))
                     for r in res.get("rows", []):
                         sku = r.get("SKU")
                         if not sku or sku in seen:
