@@ -30,17 +30,25 @@ import openpyxl
 from openpyxl.drawing.image import Image as OpenpyxlImage
 from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, TwoCellAnchor
 
-import questionary
-from questionary import Style as QStyle
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from rich.progress import (
-    Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn,
-)
-from rich import box
-
-console = Console()
+# questionary + rich son SÓLO para la interfaz de terminal (CLI). Ni Colab ni el
+# desktop las usan. Import perezoso: el módulo carga aunque no estén instaladas
+# (el .exe no las empaqueta). Sin esto, importar este engine crashea en el desktop.
+try:
+    import questionary
+    from questionary import Style as QStyle
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.progress import (
+        Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn,
+    )
+    from rich import box
+    console = Console()
+except ModuleNotFoundError:
+    questionary = QStyle = Console = Panel = Table = None
+    Progress = SpinnerColumn = BarColumn = TextColumn = None
+    TimeElapsedColumn = MofNCompleteColumn = box = None
+    console = None
 
 HOST = "https://www.falabella.com"
 BASE_URL = "https://www.falabella.com/falabella-cl"
@@ -117,7 +125,7 @@ QSTYLE = QStyle([
     ("highlighted", "fg:#a4123f bold"),
     ("selected", "fg:#00d97e"),
     ("instruction", "fg:#888888"),
-])
+]) if QStyle else None
 
 
 # ─────────────────────────────────────────  Persistence  ───────────────────
