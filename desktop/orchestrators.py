@@ -60,30 +60,45 @@ def _shots_dir(outdir: Path, tag: str):
     return d
 
 
-def build_template_bytes(tool: str):
-    """Genera el 'formato de carga' (mismo diseño que el Colab) en memoria.
+_REPO_ROOT = Path(__file__).resolve().parent.parent  # desktop/ → raíz del repo
 
-    Devuelve (nombre_archivo, bytes .xlsx). Cabecera azul pizarra #334E68,
-    freeze A2, SKU como texto. MK7/Ferni son Sodimac-only → 3 columnas.
+
+def _colab_mk7_template():
+    """Devuelve los BYTES EXACTOS del formato de carga del Colab (MK7).
+
+    Fuente única de verdad: el blob base64 embebido en launchers/mk7.py
+    (`_FORMATO_CARGA_B64`). Así el desktop entrega el MISMO archivo que el
+    Colab (5 columnas: SKU Easy · Desc. Producto · SKU Sodimac · SKU Falabella
+    · SKU Construmart) y nunca diverge. Lanza si no lo encuentra (para no
+    servir en silencio un formato distinto).
     """
+    import re
+    src = (_REPO_ROOT / "launchers" / "mk7.py").read_text(encoding="utf-8")
+    m = re.search(r'_FORMATO_CARGA_B64\s*=\s*"([^"]+)"', src)
+    if not m:
+        raise RuntimeError("No encontré _FORMATO_CARGA_B64 en launchers/mk7.py")
+    import base64
+    return base64.b64decode(m.group(1))
+
+
+def build_template_bytes(tool: str):
+    """Devuelve (nombre_archivo, bytes .xlsx) del 'formato de carga'.
+
+    - mk7: bytes EXACTOS del template del Colab (5 columnas), no una copia.
+    - ferni_sku: mismo diseño que el _download_formato del Colab (3 columnas,
+      ejemplos de puertas): cabecera #334E68, freeze A2, SKU como texto.
+    """
+    if tool != "ferni_sku":  # mk7
+        return "formato_carga.xlsx", _colab_mk7_template()
+
     import io
     from openpyxl import Workbook
     from openpyxl.styles import PatternFill, Font, Alignment
     from openpyxl.utils import get_column_letter
-
-    if tool == "ferni_sku":
-        rows = [["SKU Easy", "Desc. Producto", "SKU Sodimac"],
-                ["E001", "Puerta Madera Terciada Carpintera 90x200 (ejemplo)", "139566229"],
-                ["E002", "Puerta MDF Milano 60x200 (ejemplo, oferta)", "120822458"],
-                ["E003", "Puerta Madera Terciada Carpintera 75x200 (ejemplo)", "139566225"]]
-        fname = "formato_carga_puertas.xlsx"
-    else:  # mk7
-        rows = [["SKU Easy", "Desc. Producto", "SKU Sodimac"],
-                ["E001", "Producto de ejemplo 1", "110284026"],
-                ["E002", "Producto de ejemplo 2", "110314082"],
-                ["E003", "Producto de ejemplo 3", "5726197"]]
-        fname = "formato_carga.xlsx"
-
+    rows = [["SKU Easy", "Desc. Producto", "SKU Sodimac"],
+            ["E001", "Puerta Madera Terciada Carpintera 90x200 (ejemplo)", "139566229"],
+            ["E002", "Puerta MDF Milano 60x200 (ejemplo, oferta)", "120822458"],
+            ["E003", "Puerta Madera Terciada Carpintera 75x200 (ejemplo)", "139566225"]]
     wb = Workbook(); ws = wb.active; ws.title = "SKUs"
     for r in rows:
         ws.append(r)
@@ -95,13 +110,13 @@ def build_template_bytes(tool: str):
         cell.fill = fill; cell.font = font; cell.alignment = align
     for i, w in enumerate((12, 55, 16), 1):
         ws.column_dimensions[get_column_letter(i)].width = w
-    for ci in (1, 3):  # SKU Easy y SKU Sodimac como texto
+    for ci in (1, 3):
         for row in ws.iter_rows(min_row=2, min_col=ci, max_col=ci):
             for cell in row:
                 cell.number_format = "@"
     ws.freeze_panes = "A2"
     buf = io.BytesIO(); wb.save(buf)
-    return fname, buf.getvalue()
+    return "formato_carga_puertas.xlsx", buf.getvalue()
 
 
 # ── 1. MK7 — Buscador por SKU ───────────────────────────────────────────────
