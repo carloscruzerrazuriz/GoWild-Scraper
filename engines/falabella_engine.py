@@ -1168,8 +1168,8 @@ def _row_from_result(r, sku, zone, easy, desc):
     """Reusa fa._extract_product_from_json y agrega columnas MK6."""
     base = fa._extract_product_from_json(r, "", "")
     return {
-        "Zona": zone["name"] if zone else "Nacional",
-        "Comuna": (zone or {}).get("comuna", ""),
+        "Tienda": (zone or {}).get("id", ""),
+        "Nombre Tienda": zone["name"] if zone else "Nacional",
         "SKU Easy": easy or "",
         "Desc. Producto": desc or "",
         "SKU Falabella": sku,
@@ -1192,8 +1192,8 @@ def _row_from_result(r, sku, zone, easy, desc):
 
 def _empty_row(sku, zone, easy, desc):
     return {
-        "Zona": zone["name"] if zone else "Nacional",
-        "Comuna": (zone or {}).get("comuna", ""),
+        "Tienda": (zone or {}).get("id", ""),
+        "Nombre Tienda": zone["name"] if zone else "Nacional",
         "SKU Easy": easy or "",
         "Desc. Producto": desc or "",
         "SKU Falabella": sku,
@@ -1275,7 +1275,8 @@ async def search_skus(skus_with_meta, zones=None, screenshot=True, headless=True
 
 # Columnas del Excel de output (Imagen se agrega solo en la hoja "Con fotos").
 OUTPUT_COLS = [
-    "Zona", "Comuna", "SKU Easy", "Desc. Producto", "SKU Falabella",
+    "Tienda", "Nombre Tienda", "Región", "Zona",
+    "SKU Easy", "Desc. Producto", "SKU Falabella",
     "Vendedor", "Marca", "Descripción Producto",
     "Precio Normal", "Precio Internet", "Precio CMR", "% Descuento",
     "URL",
@@ -1287,7 +1288,9 @@ def write_output(rows, output_path):
     if not rows:
         raise ValueError("No hay filas para escribir.")
     from ._excel_utils import filter_and_reorder, apply_url_truncation
+    from . import _locales_easy as _loc
 
+    _loc.enrich_rows(rows)  # Región/Zona por id de tienda Easy (mismo que Sodimac)
     df = pd.DataFrame(rows)
     df_data = filter_and_reorder(df, OUTPUT_COLS)
     df_data.to_excel(output_path, index=False, sheet_name="Datos")

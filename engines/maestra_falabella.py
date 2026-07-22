@@ -753,7 +753,7 @@ def pick_stores():
 # ─────────────────────────────────────────  Excel  ─────────────────────────
 
 OUTPUT_COLS = [
-    "Tienda", "Nombre Tienda", "Sección", "Subcategoría",
+    "Tienda", "Nombre Tienda", "Región", "Zona", "Sección", "Subcategoría",
     "Vendedor", "Marca", "SKU", "Descripción Producto",
     "Precio Normal", "Precio Internet", "Precio CMR", "% Descuento",
     "URL",
@@ -766,8 +766,10 @@ def write_excel(rows, output_file, columns=None, *, with_images=False):
     if not rows:
         return False
     from ._excel_utils import filter_and_reorder, write_two_sheets_df
+    from . import _locales_easy as _loc
 
-    cols_to_use = columns if columns is not None else OUTPUT_COLS
+    _loc.enrich_rows(rows)  # Región/Zona por id de tienda Easy
+    cols_to_use = _loc.insert_after(columns if columns is not None else OUTPUT_COLS)
     df = pd.DataFrame(rows)
     df = filter_and_reorder(df, cols_to_use)  # sin columna Imagen
     return write_two_sheets_df(df, rows, output_file, with_images=with_images)
