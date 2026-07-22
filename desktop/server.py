@@ -121,16 +121,25 @@ def _emit(job_id, ev):
 
 
 def _run_job(job_id, tool, params):
-    """Corre la herramienta en un hilo con su propio event loop."""
+    """Corre la herramienta en un hilo con su propio event loop.
+
+    La corrutina se envuelve en una TASK y se guarda (junto al loop) en JOBS
+    para poder CANCELARLA desde /api/cancel (loop.call_soon_threadsafe(task.cancel)).
+    """
     from orchestrators import TOOLS
     loop = _new_loop()
     asyncio.set_event_loop(loop)
     emit = lambda ev: _emit(job_id, ev)  # noqa: E731
     tag = job_id[:6]  # sufijo corto para nombre de archivo / screenshots únicos
+    task = loop.create_task(TOOLS[tool]["run"](params, emit, OUTPUT_DIR, tag))
+    JOBS[job_id]["loop"] = loop
+    JOBS[job_id]["task"] = task
     try:
-        out = loop.run_until_complete(TOOLS[tool]["run"](params, emit, OUTPUT_DIR, tag))
+        out = loop.run_until_complete(task)
         JOBS[job_id]["result"] = str(out)
         emit({"type": "done", "file": Path(out).name, "path": str(out)})
+    except asyncio.CancelledError:
+        emit({"type": "warn", "msg": "Proceso cancelado."})
     except Exception as e:  # noqa: BLE001
         JOBS[job_id]["error"] = str(e)
         emit({"type": "error", "msg": str(e),
@@ -311,6 +320,16 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 return self._json({"error": str(e)}, 500)
             return self._json({"ok": True, "path": str(dest), "name": base})
+
+        if p.path == "/api/cancel":
+            payload = json.loads(self._body() or b"{}")
+            j = JOBS.get(payload.get("job") or "")
+            if not j or not j["running"]:
+                return self._json({"error": "el proceso no está corriendo"}, 404)
+            loop, task = j.get("loop"), j.get("task")
+            if loop is not None and task is not None:
+                loop.call_soon_threadsafe(task.cancel)  # cancela en el hilo del job
+            return self._json({"ok": True})
 
         if p.path == "/api/run":
             payload = json.loads(self._body() or b"{}")

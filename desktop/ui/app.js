@@ -1,66 +1,94 @@
 /* Copyright (c) 2026 Carlos Cruz Errazuriz. All rights reserved. Proprietary. */
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
-const state = { tool: "mk7", stores: [], sections: [], ferniSections: [], upload: null, t0: 0, timer: null, rows: 0 };
+const state = { tool: "mk7", stores: [], sections: [], ferniSections: [], upload: null, storeSel: new Set() };
+
+/* ── tema (claro por defecto, recordado) ── */
+(function initTheme() {
+  const t = localStorage.getItem("cruzer-theme") || "light";
+  document.documentElement.setAttribute("data-theme", t);
+  setThemeLabel(t);
+})();
+function setThemeLabel(t) { $("#themeLbl").textContent = t === "dark" ? "🌙 Oscuro" : "☀️ Claro"; }
+$("#themeBtn").onclick = () => {
+  const d = document.documentElement, next = d.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  d.setAttribute("data-theme", next); localStorage.setItem("cruzer-theme", next); setThemeLabel(next);
+};
 
 /* ── navegación entre herramientas ── */
 $$(".tool").forEach(b => b.onclick = () => {
   $$(".tool").forEach(x => x.classList.remove("active"));
   b.classList.add("active");
   state.tool = b.dataset.tool;
+  $("#paneTitle").textContent = b.dataset.title;
+  $("#paneKick").textContent = b.dataset.kick;
   $$(".pane").forEach(p => p.classList.add("hidden"));
   $(`#pane-${state.tool}`).classList.remove("hidden");
 });
 
-/* ── tiendas ── */
+/* ── tiendas (chips + búsqueda + colapso) ── */
 const RM = "Metropolitana";
 async function loadStores() {
   state.stores = await (await fetch("/api/stores")).json();
-  $("#stores").innerHTML = state.stores.map(s => `
-    <label><input type="checkbox" class="st" value="${s.id}" ${s.id === "E522" ? "checked" : ""}>
-    ${s.name} <small>${s.comuna}</small></label>`).join("");
-  $$(".st").forEach(c => c.onchange = updateStoreCount);
-  updateStoreCount();
+  state.storeSel = new Set(state.stores.some(s => s.id === "E522") ? ["E522"] : []);
+  renderChips(); summ();
 }
-function updateStoreCount() {
-  const n = $$(".st:checked").length;
-  $("#storeCount").textContent = `${n} de ${state.stores.length} seleccionadas`;
-}
-$$(".chip").forEach(c => c.onclick = () => {
-  const p = c.dataset.preset;
-  $$(".st").forEach(cb => {
-    const st = state.stores.find(s => s.id === cb.value);
-    cb.checked = p === "all" ? true : p === "none" ? false
-      : p === "rm" ? st.region === RM : st.id === "E522";
+function renderChips(filter = "") {
+  const f = filter.toLowerCase();
+  $("#storeChips").innerHTML = state.stores
+    .filter(s => s.name.toLowerCase().includes(f) || (s.comuna || "").toLowerCase().includes(f))
+    .map(s => `<span class="stchip ${state.storeSel.has(s.id) ? "on" : ""}" data-id="${s.id}">${s.name} <small>${s.comuna}</small></span>`).join("");
+  $$("#storeChips .stchip").forEach(c => c.onclick = () => {
+    const id = c.dataset.id;
+    state.storeSel.has(id) ? state.storeSel.delete(id) : state.storeSel.add(id);
+    renderChips($("#storeSearch").value); summ();
   });
-  updateStoreCount();
+}
+function summ() {
+  const ids = [...state.storeSel];
+  const names = ids.map(id => (state.stores.find(s => s.id === id) || {}).name).filter(Boolean);
+  $("#storeSummary").textContent = names.length ? (names[0] + (names.length > 1 ? ` +${names.length - 1}` : "")) : "Ninguna";
+  $("#storeSub").textContent = `${ids.length} de ${state.stores.length} seleccionada${ids.length === 1 ? "" : "s"}`;
+}
+const selectedStores = () => [...state.storeSel];
+function toggleStores(open) {
+  const t = $("#storeToggle"), cur = t.getAttribute("aria-expanded") === "true";
+  const next = open === undefined ? !cur : open;
+  t.setAttribute("aria-expanded", next);
+  $("#storePanel").classList.toggle("hidden", !next);
+}
+$("#storeToggle").onclick = () => toggleStores();
+$("#storeToggle").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleStores(); } };
+$("#storeSearch").oninput = e => renderChips(e.target.value);
+$$(".preset").forEach(p => p.onclick = () => {
+  const k = p.dataset.preset; state.storeSel.clear();
+  state.stores.forEach(s => {
+    if (k === "all") state.storeSel.add(s.id);
+    else if (k === "rm" && s.region === RM) state.storeSel.add(s.id);
+    else if (k === "cerrillos" && s.id === "E522") state.storeSel.add(s.id);
+  });
+  renderChips($("#storeSearch").value); summ();
 });
-const selectedStores = () => $$(".st:checked").map(c => c.value);
 
-/* ── MK7: archivo ── */
-$("#mk7File").onchange = async (e) => {
-  const f = e.target.files[0];
-  if (!f) return;
-  $("#mk7FileName").textContent = "Subiendo…";
-  const r = await fetch("/api/upload", {
-    method: "POST", headers: { "X-Filename": f.name }, body: await f.arrayBuffer()
-  });
-  const j = await r.json();
-  state.upload = j.path;
-  $("#mk7FileName").textContent = `✓ ${f.name}`;
-};
-
-/* ── Ferni: archivo ── */
-$("#ferniFile").onchange = async (e) => {
-  const f = e.target.files[0];
-  if (!f) return;
-  $("#ferniFileName").textContent = "Subiendo…";
-  const r = await fetch("/api/upload", {
-    method: "POST", headers: { "X-Filename": f.name }, body: await f.arrayBuffer()
-  });
-  state.upload = (await r.json()).path;
-  $("#ferniFileName").textContent = `✓ ${f.name}`;
-};
+/* ── subir Excel (reusable + drag & drop) ── */
+async function uploadFile(file, labelSel) {
+  if (!file) return;
+  const span = $(labelSel), old = span.textContent;
+  span.textContent = "Subiendo…";
+  try {
+    const r = await fetch("/api/upload", { method: "POST", headers: { "X-Filename": file.name }, body: await file.arrayBuffer() });
+    state.upload = (await r.json()).path;
+    span.textContent = `✓ ${file.name}`;
+  } catch (e) { span.textContent = old; showGlobalError("No se pudo subir el archivo."); }
+}
+$("#mk7File").onchange = e => uploadFile(e.target.files[0], "#mk7FileName");
+$("#ferniFile").onchange = e => uploadFile(e.target.files[0], "#ferniFileName");
+$$(".drop").forEach(d => {
+  const sel = d.dataset.drop === "mk7" ? "#mk7FileName" : "#ferniFileName";
+  d.addEventListener("dragover", e => { e.preventDefault(); d.classList.add("drag"); });
+  d.addEventListener("dragleave", () => d.classList.remove("drag"));
+  d.addEventListener("drop", e => { e.preventDefault(); d.classList.remove("drag"); uploadFile(e.dataTransfer.files[0], sel); });
+});
 
 /* ── Sección: cargar árbol ── */
 async function fetchSections(btn, ferni = false) {
@@ -74,7 +102,6 @@ async function fetchSections(btn, ferni = false) {
     if (ferni) state.ferniSections = tree; else state.sections = tree;
     return tree;
   } catch (e) {
-    // Antes el error se tragaba en silencio (el botón sólo revertía). Ahora se muestra.
     showGlobalError("No se pudieron cargar las secciones: " + e.message);
     return null;
   } finally { btn.textContent = old; btn.disabled = false; }
@@ -97,12 +124,12 @@ function renderFsSubcats() {
   $$(".fsub").forEach(c => c.onchange = countFsubs);
   countFsubs();
 }
-function countFsubs() {
-  $("#fsCount").textContent = `${$$(".fsub:checked").length} subcategorías`;
-}
+function countFsubs() { $("#fsCount").textContent = `${$$(".fsub:checked").length} subcategorías`; }
 $$("[data-fsub]").forEach(b => b.onclick = () => {
   $$(".fsub").forEach(c => c.checked = b.dataset.fsub === "all"); countFsubs();
 });
+
+/* ── Maestra Sección ── */
 $("#loadSections").onclick = async (e) => {
   const tree = await fetchSections(e.target);
   if (!tree) return;
@@ -119,9 +146,7 @@ function renderSubcats() {
   $$(".sub").forEach(c => c.onchange = countSubs);
   countSubs();
 }
-function countSubs() {
-  $("#subCount").textContent = `${$$(".sub:checked").length} subcategorías`;
-}
+function countSubs() { $("#subCount").textContent = `${$$(".sub:checked").length} subcategorías`; }
 $$("[data-sub]").forEach(b => b.onclick = () => {
   $$(".sub").forEach(c => c.checked = b.dataset.sub === "all"); countSubs();
 });
@@ -165,8 +190,7 @@ function buildParams() {
     if (!sec) throw new Error("Carga y elige una sección.");
     const subs = $$(".fsub:checked").map(c => sec.subcats[+c.value]);
     if (!subs.length) throw new Error("Marca al menos una subcategoría.");
-    return { section: sec.section, subcats: subs, store_ids: stores,
-             screenshots: $("#fsShots").checked };
+    return { section: sec.section, subcats: subs, store_ids: stores, screenshots: $("#fsShots").checked };
   }
   const scope = $("[name=fastScope]:checked").value;
   const p = { store_ids: stores, wholesale_only: $("#fastWholesale").checked };
@@ -180,18 +204,15 @@ function buildParams() {
   return p;
 }
 
-/* ── ejecutar — hasta 3 jobs en paralelo ── */
+/* ═══ ejecutar — hasta 3 jobs en paralelo ═══ */
 const MAX_JOBS = 3;
 let activeJobs = 0;
 
-/* una barra por fase — se crea sola cuando llega la 1ª señal de esa fase.
-   Refleja las mismas fases que el Colab (Tiendas/Subcats/…) sin hardcodear
-   cuáles emite cada herramienta. Todo scopeado a la TARJETA del job. */
 const PHASE = {
-  zona:   { label: "Tiendas",        order: 0 },
-  subcat: { label: "Subcategorías",  order: 1 },
-  lote:   { label: "Lotes",          order: 2 },
-  pagina: { label: "Páginas",        order: 3 },
+  zona:   { label: "Tiendas",       order: 0 },
+  subcat: { label: "Subcategorías", order: 1 },
+  lote:   { label: "Lotes",         order: 2 },
+  pagina: { label: "Páginas",       order: 3 },
 };
 function jobPhaseBar(card, phase) {
   const bars = card.querySelector(".bars");
@@ -199,14 +220,9 @@ function jobPhaseBar(card, phase) {
   if (!row) {
     const m = PHASE[phase] || { label: phase, order: 9 };
     row = document.createElement("div");
-    row.className = "barrow";
-    row.dataset.phase = phase;
-    row.style.order = m.order;
-    row.innerHTML =
-      `<div class="barhead"><span class="barlabel">${m.label}</span>` +
-      `<span class="barcount"></span></div>` +
-      `<div class="bar"><div class="fill"></div></div>` +
-      `<div class="barmsg"></div>`;
+    row.className = "barrow"; row.dataset.phase = phase; row.style.order = m.order;
+    row.innerHTML = `<div class="barhead"><span class="barlabel">${m.label}</span><span class="barcount"></span></div>
+      <div class="track"><div class="fill"></div></div><div class="barmsg"></div>`;
     bars.appendChild(row);
   }
   return row;
@@ -225,27 +241,30 @@ function showJobResult(card, html, bad = false) {
   el.innerHTML = html;
   el.classList.remove("hidden");
 }
+function setStatus(card, kind, text) {
+  const s = card.querySelector(".status");
+  s.className = "status " + kind;
+  s.querySelector(".stxt").textContent = text;
+}
 function showGlobalError(msg) {
   const el = $("#globalMsg");
-  el.textContent = msg;
-  el.classList.remove("hidden");
+  el.textContent = msg; el.classList.remove("hidden");
   setTimeout(() => el.classList.add("hidden"), 6000);
 }
 function updateRunBtn() {
   const full = activeJobs >= MAX_JOBS;
   $("#runBtn").disabled = full;
   $("#runBtn").textContent = full ? `Máximo ${MAX_JOBS} a la vez` : "Iniciar";
-  $("#runHint").textContent = activeJobs
-    ? `${activeJobs} de ${MAX_JOBS} en curso.` : `Puedes lanzar hasta ${MAX_JOBS} a la vez.`;
+  $("#runHint").textContent = activeJobs ? `${activeJobs} de ${MAX_JOBS} en curso.` : `Puedes lanzar hasta ${MAX_JOBS} a la vez`;
 }
+function afterRemove() { if (!$("#jobs").children.length) $("#jobsEmpty").classList.remove("hidden"); }
 
 async function startJob() {
   if (activeJobs >= MAX_JOBS) return;
   let params;
-  try { params = buildParams(); }        // snapshot de la config actual
-  catch (e) { showGlobalError(e.message); return; }
+  try { params = buildParams(); } catch (e) { showGlobalError(e.message); return; }
   const tool = state.tool;
-  const toolLabel = document.querySelector(`.tool[data-tool="${tool}"] b`).textContent;
+  const toolLabel = document.querySelector(`.tool[data-tool="${tool}"] .tt b`).textContent;
 
   const r = await fetch("/api/run", {
     method: "POST", headers: { "Content-Type": "application/json" },
@@ -253,10 +272,21 @@ async function startJob() {
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { showGlobalError(j.error || "No se pudo iniciar."); return; }
+  $("#globalMsg").classList.add("hidden");
 
   const card = $("#jobTpl").content.firstElementChild.cloneNode(true);
   card.querySelector(".job-tool").textContent = toolLabel;
-  card.querySelector(".job-close").onclick = () => { if (card.dataset.done) card.remove(); };
+  card.querySelector(".jclose").onclick = () => { card.remove(); afterRemove(); };
+  card.querySelector(".jcancel").onclick = async () => {
+    card.dataset.cancelled = "1";
+    setStatus(card, "warn", "Cancelando…");
+    card.querySelector(".jcancel").disabled = true;
+    await fetch("/api/cancel", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job: j.job_id })
+    }).catch(() => {});
+  };
+  $("#jobsEmpty").classList.add("hidden");
   $("#jobs").prepend(card);
   activeJobs++; updateRunBtn();
   streamJob(j.job_id, card);
@@ -285,17 +315,17 @@ function streamJob(jobId, card) {
       row.querySelector(".fill").style.width = pct + "%";
       row.querySelector(".barcount").textContent = ev.total ? `${ev.done}/${ev.total}` : "";
       row.querySelector(".barmsg").textContent = ev.msg || "";
-      if (ev.msg) q(".bannerMsg").textContent = ev.msg;
+      if (ev.msg) q(".curaction").textContent = ev.msg;
     } else if (ev.type === "count") {
       rows = ev.rows; q(".rowCount").textContent = ev.rows; speed();
     } else if (ev.type === "info") {
-      q(".bannerMsg").textContent = ev.msg;
+      q(".curaction").textContent = ev.msg;
     } else if (ev.type === "warn") {
       jobAlert(card, ev.msg, "w");
     } else if (ev.type === "error") {
-      jobAlert(card, ev.msg, "e"); showJobResult(card, ev.msg, true);
+      jobAlert(card, ev.msg, "e"); showJobResult(card, ev.msg, true); card.dataset.err = "1";
     } else if (ev.type === "done") {
-      card.querySelectorAll(".fill").forEach(f => f.style.width = "100%");
+      card.querySelectorAll(".fill").forEach(f => { f.style.width = "100%"; f.classList.add("ok"); });
       showJobResult(card, `Listo — <a href="/api/download?f=${encodeURIComponent(ev.path)}">${ev.file}</a>`);
       loadOutputs();
     } else if (ev.type === "eof") {
@@ -307,15 +337,16 @@ function streamJob(jobId, card) {
 
 function endJob(card, timer) {
   clearInterval(timer);
+  activeJobs = Math.max(0, activeJobs - 1); updateRunBtn();
+  card.querySelector(".jcancel")?.remove();
+  card.querySelector(".jclose").classList.remove("hidden");
+  card.querySelector(".curaction").classList.add("hidden");
   card.dataset.done = "1";
-  card.querySelector(".banner").classList.add("done");
-  const bm = card.querySelector(".bannerMsg");
-  if (bm.textContent === "Trabajando…" || !card.querySelector(".result").innerHTML)
-    bm.textContent = "Listo.";
-  activeJobs = Math.max(0, activeJobs - 1);
-  updateRunBtn();
+  if (card.dataset.cancelled) setStatus(card, "warn", "Cancelado");
+  else if (card.dataset.err) setStatus(card, "err", "Error");
+  else if (card.querySelector(".alert.w")) setStatus(card, "warn", "Con avisos");
+  else setStatus(card, "done", "Listo");
 }
-
 $("#runBtn").onclick = startJob;
 
 /* ── archivos generados ── */
@@ -326,23 +357,21 @@ function fmtDate(ms) {
 }
 async function loadOutputs() {
   const files = await (await fetch("/api/outputs")).json();
-  if (!files.length) { $("#outputs").innerHTML = "Todavía no hay archivos."; return; }
-  $("#outputs").innerHTML = files.map(f => `<div>
-      <span class="out-file">
-        <a href="/api/download?f=${encodeURIComponent(f.path)}">${f.name}</a>
-        <small class="out-date">${fmtDate(f.mtime)}</small>
-      </span>
-      <span class="out-meta">
-        <span class="out-size">${(f.size / 1048576).toFixed(1)} MB</span>
-        <button class="ren" data-path="${encodeURIComponent(f.path)}" data-name="${encodeURIComponent(f.name)}" title="Cambiar nombre">✎</button>
-        <button class="del" data-path="${encodeURIComponent(f.path)}" title="Borrar archivo">✕</button>
-      </span>
-    </div>`).join("");
-  $$(".del").forEach(b => b.onclick = () => deleteOutput(decodeURIComponent(b.dataset.path), b));
-  $$(".ren").forEach(b => b.onclick = () =>
+  if (!files.length) {
+    $("#outputs").innerHTML = `<div class="empty"><span class="ei">▦</span>Todavía no hay archivos.</div>`;
+    return;
+  }
+  $("#outputs").innerHTML = files.map(f => `<div class="file">
+    <span class="fic">▦</span>
+    <span class="fmeta"><a href="/api/download?f=${encodeURIComponent(f.path)}">${f.name}</a><small>${fmtDate(f.mtime)}</small></span>
+    <span class="fsize">${(f.size / 1048576).toFixed(1)} MB</span>
+    <button class="iconbtn ren" data-path="${encodeURIComponent(f.path)}" data-name="${encodeURIComponent(f.name)}" title="Cambiar nombre">✎</button>
+    <button class="iconbtn del" data-path="${encodeURIComponent(f.path)}" title="Borrar">✕</button>
+  </div>`).join("");
+  $$("#outputs .del").forEach(b => b.onclick = () => deleteOutput(decodeURIComponent(b.dataset.path), b));
+  $$("#outputs .ren").forEach(b => b.onclick = () =>
     renameOutput(decodeURIComponent(b.dataset.path), decodeURIComponent(b.dataset.name), b));
 }
-
 async function renameOutput(path, current, btn) {
   const name = prompt("Nuevo nombre del archivo:", current);
   if (name === null) return;
@@ -358,7 +387,6 @@ async function renameOutput(path, current, btn) {
   const j = await r.json().catch(() => ({}));
   alert(j.error || "No se pudo cambiar el nombre.");
 }
-
 async function deleteOutput(path, btn) {
   if (!confirm("¿Borrar este archivo? No se puede deshacer.")) return;
   btn.disabled = true;
@@ -371,5 +399,13 @@ async function deleteOutput(path, btn) {
   const j = await r.json().catch(() => ({}));
   alert(j.error || "No se pudo borrar el archivo.");
 }
+
+/* ── atajos de teclado ── */
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); startJob(); }
+  if (e.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
+    e.preventDefault(); toggleStores(true); $("#storeSearch").focus();
+  }
+});
 
 loadStores(); loadOutputs();

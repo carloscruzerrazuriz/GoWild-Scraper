@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,171 +11,189 @@
 <body>
 <div class="app">
 
+  <!-- ══════════ SIDEBAR ══════════ -->
   <aside class="side">
     <div class="brand">
       <div class="logo"><img src="/ui/assets/logo.png?v=cruzer-logo" alt="Cruzer"></div>
       <div>
         <h1>Cruzer</h1>
-        <span id="version">Desktop</span>
+        <span class="sub" id="version">Desktop</span>
       </div>
     </div>
 
     <nav id="nav">
-      <button class="tool active" data-tool="mk7">
-        <b>MK7</b><span>Buscador por SKU</span>
+      <div class="navlabel">Sodimac</div>
+      <button class="tool active" data-tool="mk7"
+        data-title="Buscar por SKU" data-kick="Sube un Excel de SKUs y compara precios por tienda.">
+        <span class="ic">🔎</span><span class="tt"><b>Buscar por SKU</b><span>por lista de SKU</span></span><span class="chip">MK7</span>
       </button>
-      <button class="tool" data-tool="seccion">
-        <b>Sección</b><span>Catálogo por categoría</span>
+      <button class="tool" data-tool="seccion"
+        data-title="Catálogo por categoría" data-kick="Recorre el árbol de categorías y arma el catálogo.">
+        <span class="ic">🗂️</span><span class="tt"><b>Catálogo</b><span>por categoría</span></span><span class="chip">Sección</span>
       </button>
-      <button class="tool" data-tool="fast">
-        <b>Fast</b><span>Precios por mayor</span>
+      <button class="tool" data-tool="fast"
+        data-title="Precios por mayor" data-kick="Barrido por HTTP, sin navegador — el más rápido.">
+        <span class="ic">⚡</span><span class="tt"><b>Precios por mayor</b><span>sin navegador</span></span><span class="chip">Fast</span>
       </button>
-      <div class="navsep">Ferni</div>
-      <button class="tool" data-tool="ferni_sku">
-        <b>Puertas por SKU</b><span>medida y precio exactos</span>
+
+      <div class="navlabel">Ferni · puertas</div>
+      <button class="tool" data-tool="ferni_sku"
+        data-title="Puertas por SKU" data-kick="1 fila por medida: extrae medida y precio exactos.">
+        <span class="ic">🚪</span><span class="tt"><b>Puertas por SKU</b><span>medida exacta</span></span><span class="chip">Ferni</span>
       </button>
-      <button class="tool" data-tool="ferni_seccion">
-        <b>Ferni Sección</b><span>puertas y más, por categoría</span>
+      <button class="tool" data-tool="ferni_seccion"
+        data-title="Puertas por categoría" data-kick="Recorre categorías y expande cada producto por medida.">
+        <span class="ic">🚪</span><span class="tt"><b>Puertas por categoría</b><span>por sección</span></span><span class="chip">Ferni</span>
       </button>
     </nav>
 
     <div class="side-foot">
-      <div class="badge" id="envBadge">local</div>
-      <p>Corre en tu PC: más rápido, sin límite de sesión.</p>
+      <button class="themebtn" id="themeBtn"><span>Tema</span><span id="themeLbl">☀️ Claro</span></button>
+      <div class="envrow"><span class="dot"></span> Corriendo en tu PC · sin límite de sesión</div>
     </div>
   </aside>
 
+  <!-- ══════════ MAIN (2 columnas) ══════════ -->
   <main class="main">
 
-    <!-- ══ Tiendas (compartido) ══ -->
-    <section class="card" id="storesCard">
-      <header><h2>Tiendas</h2><span class="hint" id="storeCount">—</span></header>
-      <div class="presets">
-        <button class="chip" data-preset="cerrillos">Solo Cerrillos</button>
-        <button class="chip" data-preset="rm">Región Metropolitana</button>
-        <button class="chip" data-preset="all">Todas (42)</button>
-        <button class="chip" data-preset="none">Ninguna</button>
-      </div>
-      <div class="grid" id="stores"></div>
-    </section>
-
-    <!-- ══ MK7 ══ -->
-    <section class="card pane" id="pane-mk7">
-      <header><h2>MK7 · Buscador por SKU</h2></header>
-      <p class="lead">Sube tu Excel con la columna <code>SKU Sodimac</code>. Busca cada SKU en las tiendas seleccionadas.</p>
-      <label class="file">
-        <input type="file" id="mk7File" accept=".xlsx,.xls">
-        <span id="mk7FileName">Elegir archivo…</span>
-      </label>
-      <label class="check"><input type="checkbox" id="mk7Shots"> Capturar fotos de las cards</label>
-    </section>
-
-    <!-- ══ Sección ══ -->
-    <section class="card pane hidden" id="pane-seccion">
-      <header><h2>Maestra Sección</h2></header>
-      <p class="lead">Recorre el árbol de categorías de Sodimac y arma el catálogo.</p>
-      <button class="btn ghost" id="loadSections">Cargar secciones</button>
-      <div id="secWrap" class="hidden">
-        <select id="secSelect"></select>
-        <div class="subhead">
-          <span id="subCount">—</span>
-          <span>
-            <button class="mini" data-sub="all">Todas</button>
-            <button class="mini" data-sub="none">Ninguna</button>
-          </span>
+    <!-- ── COLUMNA IZQUIERDA: configuración ── -->
+    <div class="col">
+      <div class="pagehead">
+        <div>
+          <h2 id="paneTitle">Buscar por SKU</h2>
+          <div class="kicker" id="paneKick">Sube un Excel de SKUs y compara precios por tienda.</div>
         </div>
-        <div class="grid" id="subcats"></div>
       </div>
-      <label class="check"><input type="checkbox" id="secNonSod"> Incluir marketplace (no-Sodimac)</label>
-      <label class="check"><input type="checkbox" id="secShots"> Capturar fotos de las cards</label>
-    </section>
 
-    <!-- ══ Fast ══ -->
-    <section class="card pane hidden" id="pane-fast">
-      <header><h2>Fast · Precios por mayor</h2><span class="tag">sin navegador</span></header>
-      <p class="lead">Recorre el catálogo por HTTP (mucho más rápido) y conserva los productos con precio mayorista.</p>
-      <div class="radios">
-        <label><input type="radio" name="fastScope" value="all" checked> Todo el catálogo</label>
-        <label><input type="radio" name="fastScope" value="sections"> Elegir secciones</label>
-        <label><input type="radio" name="fastScope" value="url"> URL personalizada</label>
-      </div>
-      <div id="fastSecWrap" class="hidden">
-        <button class="btn ghost" id="fastLoadSections">Cargar secciones</button>
-        <div class="grid" id="fastSections"></div>
-      </div>
-      <input type="text" id="fastUrl" class="hidden input" placeholder="https://www.sodimac.cl/sodimac-cl/lista/...">
-      <label class="check"><input type="checkbox" id="fastWholesale" checked> Solo productos con precio mayorista</label>
-    </section>
-
-    <!-- ══ Ferni SKU ══ -->
-    <section class="card pane hidden" id="pane-ferni_sku">
-      <header><h2>Ferni · Puertas por SKU</h2><span class="tag">1 fila por medida</span></header>
-      <p class="lead">Para puertas y productos con selector de medida: extrae la <b>medida y el precio exactos</b> de cada variante, no el rango de la card.</p>
-      <label class="file">
-        <input type="file" id="ferniFile" accept=".xlsx,.xls">
-        <span id="ferniFileName">Elegir archivo…</span>
-      </label>
-      <label class="check"><input type="checkbox" id="ferniShots"> Capturar fotos de las cards</label>
-    </section>
-
-    <!-- ══ Ferni Sección ══ -->
-    <section class="card pane hidden" id="pane-ferni_seccion">
-      <header><h2>Ferni · Sección</h2><span class="tag">1 fila por medida</span></header>
-      <p class="lead">Recorre categorías y expande cada producto por medida. Ideal para puertas.</p>
-      <button class="btn ghost" id="fsLoadSections">Cargar secciones</button>
-      <div id="fsWrap" class="hidden">
-        <select id="fsSelect"></select>
-        <div class="subhead">
-          <span id="fsCount">—</span>
-          <span>
-            <button class="mini" data-fsub="all">Todas</button>
-            <button class="mini" data-fsub="none">Ninguna</button>
-          </span>
+      <!-- Tiendas: fila-resumen colapsable -->
+      <div>
+        <div class="control" id="storeToggle" role="button" tabindex="0" aria-expanded="false">
+          <span class="ck">📍</span>
+          <span class="txt"><b id="storeSummary">—</b><span id="storeSub">cargando tiendas…</span></span>
+          <span class="chev">▾</span>
         </div>
-        <div class="grid" id="fsSubcats"></div>
-      </div>
-      <label class="check"><input type="checkbox" id="fsShots"> Capturar fotos de las cards</label>
-    </section>
-
-    <!-- ══ Ejecutar ══ -->
-    <section class="card">
-      <button class="btn primary" id="runBtn">Iniciar</button>
-      <p class="runhint" id="runHint">Puedes lanzar hasta 3 a la vez.</p>
-      <div id="globalMsg" class="result bad hidden"></div>
-      <div id="jobs" class="jobs"></div>
-    </section>
-
-    <!-- plantilla de tarjeta de job (clonada por JS) -->
-    <template id="jobTpl">
-      <div class="job">
-        <div class="job-head">
-          <b class="job-tool"></b>
-          <button class="job-close" title="Cerrar">✕</button>
+        <div class="storepanel card hidden" id="storePanel">
+          <div class="search"><span class="si">🔎</span><input id="storeSearch" placeholder="Buscar tienda…  (tecla /)"></div>
+          <div class="presets">
+            <button class="preset" data-preset="cerrillos">Solo Cerrillos</button>
+            <button class="preset" data-preset="rm">Región Metropolitana</button>
+            <button class="preset" data-preset="all">Todas</button>
+            <button class="preset" data-preset="none">Ninguna</button>
+          </div>
+          <div class="chips" id="storeChips"></div>
         </div>
-        <div class="banner"><span class="spin"></span><span class="bannerMsg">Trabajando…</span></div>
-        <div class="bars"></div>
-        <div class="metrics">
-          <span><b class="rowCount">0</b> filas</span>
-          <span>·</span><span class="elapsed">0s</span>
-          <span>·</span><span class="speed">— filas/min</span>
-        </div>
-        <div class="alerts hidden"></div>
-        <div class="result hidden"></div>
       </div>
-    </template>
 
-    <section class="card">
-      <header><h2>Archivos generados</h2></header>
-      <div id="outputs" class="outputs">—</div>
-    </section>
+      <!-- ── Panes de herramienta (controles reales) ── -->
+      <section class="card raised pane" id="pane-mk7">
+        <p class="lead">Sube tu Excel con la columna <code>SKU Sodimac</code>. Busca cada SKU en las tiendas seleccionadas.</p>
+        <label class="drop" data-drop="mk7">
+          <input type="file" id="mk7File" accept=".xlsx,.xls">
+          <span class="di">📄</span><span id="mk7FileName">Arrastra o elige tu Excel…</span>
+        </label>
+        <label class="switch"><input type="checkbox" id="mk7Shots"><span>Capturar fotos de las cards</span></label>
+      </section>
 
+      <section class="card raised pane hidden" id="pane-seccion">
+        <p class="lead">Recorre el árbol de categorías de Sodimac y arma el catálogo.</p>
+        <button class="btn ghost" id="loadSections">Cargar secciones</button>
+        <div id="secWrap" class="hidden">
+          <select id="secSelect" class="select"></select>
+          <div class="subhead">
+            <span id="subCount">—</span>
+            <span><button class="mini" data-sub="all">Todas</button><button class="mini" data-sub="none">Ninguna</button></span>
+          </div>
+          <div class="checkgrid" id="subcats"></div>
+        </div>
+        <label class="switch"><input type="checkbox" id="secNonSod"><span>Incluir marketplace (no-Sodimac)</span></label>
+        <label class="switch"><input type="checkbox" id="secShots"><span>Capturar fotos de las cards</span></label>
+      </section>
+
+      <section class="card raised pane hidden" id="pane-fast">
+        <p class="lead">Recorre el catálogo por HTTP (mucho más rápido) y conserva los productos con precio mayorista.</p>
+        <div class="radios">
+          <label><input type="radio" name="fastScope" value="all" checked><span>Todo el catálogo</span></label>
+          <label><input type="radio" name="fastScope" value="sections"><span>Elegir secciones</span></label>
+          <label><input type="radio" name="fastScope" value="url"><span>URL personalizada</span></label>
+        </div>
+        <div id="fastSecWrap" class="hidden">
+          <button class="btn ghost" id="fastLoadSections">Cargar secciones</button>
+          <div class="checkgrid" id="fastSections"></div>
+        </div>
+        <input type="text" id="fastUrl" class="input hidden" placeholder="https://www.sodimac.cl/sodimac-cl/lista/...">
+        <label class="switch"><input type="checkbox" id="fastWholesale" checked><span>Solo productos con precio mayorista</span></label>
+      </section>
+
+      <section class="card raised pane hidden" id="pane-ferni_sku">
+        <p class="lead">Para puertas y productos con selector de medida: extrae la <b>medida y el precio exactos</b> de cada variante.</p>
+        <label class="drop" data-drop="ferni">
+          <input type="file" id="ferniFile" accept=".xlsx,.xls">
+          <span class="di">🚪</span><span id="ferniFileName">Arrastra o elige tu Excel de puertas…</span>
+        </label>
+        <label class="switch"><input type="checkbox" id="ferniShots"><span>Capturar fotos de las cards</span></label>
+      </section>
+
+      <section class="card raised pane hidden" id="pane-ferni_seccion">
+        <p class="lead">Recorre categorías y expande cada producto por medida. Ideal para puertas.</p>
+        <button class="btn ghost" id="fsLoadSections">Cargar secciones</button>
+        <div id="fsWrap" class="hidden">
+          <select id="fsSelect" class="select"></select>
+          <div class="subhead">
+            <span id="fsCount">—</span>
+            <span><button class="mini" data-fsub="all">Todas</button><button class="mini" data-fsub="none">Ninguna</button></span>
+          </div>
+          <div class="checkgrid" id="fsSubcats"></div>
+        </div>
+        <label class="switch"><input type="checkbox" id="fsShots"><span>Capturar fotos de las cards</span></label>
+      </section>
+
+      <!-- Ejecutar -->
+      <div>
+        <button class="run" id="runBtn">Iniciar</button>
+        <p class="runhint" id="runHint">Puedes lanzar hasta 3 a la vez</p>
+        <div id="globalMsg" class="gerror hidden"></div>
+      </div>
+    </div>
+
+    <!-- ── COLUMNA DERECHA: rail de actividad ── -->
+    <div class="col rail">
+      <div>
+        <h3>Actividad</h3>
+        <div id="jobs"></div>
+        <div class="empty" id="jobsEmpty"><span class="ei">◔</span>Sin procesos. Aprieta <b>Iniciar</b>.</div>
+      </div>
+      <div class="card">
+        <h3>Archivos generados</h3>
+        <div id="outputs" class="files"></div>
+      </div>
+    </div>
+
+    <div class="legal">
+      Cruzer — Carlos Cruz E. · Copyright (c) 2026 Carlos Cruz Errazuriz · All rights reserved · Proprietary
+    </div>
   </main>
 </div>
 
-<footer class="legal">
-  Cruzer — Carlos Cruz E.<br>
-  Copyright (c) 2026 Carlos Cruz Errazuriz · All rights reserved · Proprietary — No unauthorized use or distribution
-</footer>
+<!-- plantilla de tarjeta de job (clonada por JS) -->
+<template id="jobTpl">
+  <div class="job raised">
+    <div class="job-head">
+      <span class="jt job-tool"></span>
+      <span class="status run"><span class="sdot"></span><span class="stxt">En curso</span></span>
+      <button class="jclose hidden" title="Cerrar">✕</button>
+    </div>
+    <div class="curaction bannerMsg">Trabajando…</div>
+    <div class="bars"></div>
+    <div class="metrics">
+      <span><b class="rowCount">0</b> filas</span>
+      <span>·</span><span class="elapsed">0s</span>
+      <span>·</span><span class="speed">— filas/min</span>
+    </div>
+    <div class="alerts hidden"></div>
+    <div class="result hidden"></div>
+    <button class="jcancel">Cancelar</button>
+  </div>
+</template>
 
 <script src="/ui/app.js"></script>
 </body>
