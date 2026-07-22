@@ -51,7 +51,7 @@ MAX_PAGES_PER_SUBCAT = 200
 
 # Columnas de salida IDÉNTICAS al motor de producción (Precios Mayoristas).
 OUTPUT_COLS = [
-    "Tienda", "Nombre Tienda", "Sección", "Subcategoría",
+    "Tienda", "Nombre Tienda", "Región", "Zona", "Sección", "Subcategoría",
     "Vendedor", "Marca", "SKU", "Descripción Producto",
     "Precio Normal", "Precio Internet", "% Descuento",
     "Precio Mayorista", "Descuento Mayorista",

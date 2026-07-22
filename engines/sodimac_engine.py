@@ -713,9 +713,14 @@ def write_output(df, desc_col, sku_col, easy_col, matches, output_path, stores=N
                 base.update(EMPTY)
             rows.append(base)
 
+    from . import _locales_easy as _loc
+    _rz = [_loc.region_zona(r["store_id"]) for r in rows]
+
     cols = {}
     cols["Tienda"]                   = pd.Series([r["store_id"] for r in rows], dtype=object)
     cols["Nombre Tienda"]            = [r["store_found"] for r in rows]
+    cols["Región"]                   = [rz[0] for rz in _rz]
+    cols["Zona"]                     = [rz[1] for rz in _rz]
     cols["SKU Easy"]                 = pd.Series([r["SKU Easy"] for r in rows], dtype=object)
     cols["Desc. Producto"]           = pd.Series([r["Desc. Producto"] for r in rows], dtype=object)
     cols["SKU Sodimac"]              = pd.Series([r["SKU Sodimac"] for r in rows], dtype=object)

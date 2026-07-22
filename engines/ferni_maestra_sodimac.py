@@ -478,7 +478,7 @@ async def scrape_maestra(
 # ─────────────────────────────────────────  Excel output  ──────────────────
 
 OUTPUT_COLS = [
-    "Tienda", "Nombre Tienda", "Sección", "Subcategoría", "Marca", "SKU",
+    "Tienda", "Nombre Tienda", "Región", "Zona", "Sección", "Subcategoría", "Marca", "SKU",
     "Descripción Producto", "Medida", "Vendedor", "Precio Normal",
     "Precio Internet", "% Descuento", "Todas las Medidas", "URL",
 ]
@@ -488,6 +488,9 @@ def write_excel(rows, output_file, *, with_images=False):
     """1 hoja "Datos" (sin fotos) o, si with_images, 2 hojas "Datos" + "Con fotos"
     (mismos datos + screenshot de la card embebida). Mismo formato que el MK7."""
     from ._excel_utils import write_two_sheets_df
+    from . import _locales_easy as _loc
+    if rows:
+        _loc.enrich_rows(rows)  # Región/Zona por id de tienda
     df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=OUTPUT_COLS)
     for c in OUTPUT_COLS:
         if c not in df.columns:
