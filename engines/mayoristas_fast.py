@@ -113,6 +113,7 @@ def _fetch_page(url, cookie, *, retries=4):
     `pagination.count` (total de productos que Sodimac declara para esa query),
     usado para verificar completitud. `None` si la página no lo trae.
     """
+    import time as _t
     for attempt in range(retries):
         try:
             req = urllib.request.Request(url, headers={
@@ -123,7 +124,11 @@ def _fetch_page(url, cookie, *, retries=4):
                 html = r.read().decode("utf-8", "replace")
             m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
             if not m:
-                continue  # HTML raro (challenge?) → reintentar, NO tratar como vacío
+                # HTML raro (challenge de Cloudflare bajo carga) → BACKOFF y reintentar.
+                # Antes hacía `continue` SIN esperar (hot-loop que agravaba el rate-limit
+                # y causaba tandas de 'error de red persistente').
+                _t.sleep(1.2 * (attempt + 1))
+                continue
             data = json.loads(m.group(1))
             results = _find_results(data) or []
             pag = _find_pagination(data) or {}
@@ -133,8 +138,9 @@ def _fetch_page(url, cookie, *, retries=4):
             except (TypeError, ValueError):
                 total = None
             return results, total, True
+        except urllib.error.HTTPError as e:  # 429/503 = rate-limit → backoff más largo
+            _t.sleep((2.5 if e.code in (429, 503) else 0.6) * (attempt + 1))
         except Exception:  # noqa: BLE001
-            import time as _t
             _t.sleep(0.6 * (attempt + 1))  # backoff antes de reintentar
     return [], None, False  # error DURO: el caller lo marca incompleto, no como fin
 

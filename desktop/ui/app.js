@@ -325,18 +325,29 @@ async function startJob() {
   streamJob(j.job_id, card);
 }
 
+function fmtDur(s) {
+  s = Math.max(0, Math.round(s));
+  return s > 90 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+}
 function streamJob(jobId, card) {
   const q = (s) => card.querySelector(s);
   const t0 = Date.now();
-  let rows = 0;
+  let rows = 0, frac = 0;   // frac = avance global (0..1) para el ETA
   const speed = () => {
     const min = (Date.now() - t0) / 60000;
     if (min > 0.05 && rows > 0) q(".speed").textContent = `${Math.round(rows / min)} filas/min`;
   };
+  const eta = () => {
+    const el = (Date.now() - t0) / 1000;
+    if (frac > 0.01 && frac < 0.995 && el > 6) {
+      q(".eta").textContent = "~" + fmtDur(el * (1 - frac) / frac) + " restante";
+      q(".eta-sep").classList.remove("hidden");
+    }
+  };
   const timer = setInterval(() => {
     const s = Math.round((Date.now() - t0) / 1000);
-    q(".elapsed").textContent = s > 90 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
-    speed();
+    q(".elapsed").textContent = fmtDur(s);
+    speed(); eta();
   }, 1000);
 
   const es = new EventSource("/api/events?job=" + encodeURIComponent(jobId));
@@ -349,6 +360,7 @@ function streamJob(jobId, card) {
       row.querySelector(".barcount").textContent = ev.total ? `${ev.done}/${ev.total}` : "";
       row.querySelector(".barmsg").textContent = ev.msg || "";
       if (ev.msg) q(".curaction").textContent = ev.msg;
+      if (typeof ev.frac === "number") { frac = ev.frac; eta(); }
     } else if (ev.type === "count") {
       rows = ev.rows; q(".rowCount").textContent = ev.rows; speed();
     } else if (ev.type === "info") {
@@ -374,6 +386,8 @@ function endJob(card, timer) {
   card.querySelector(".jcancel")?.remove();
   card.querySelector(".jclose").classList.remove("hidden");
   card.querySelector(".curaction").classList.add("hidden");
+  card.querySelector(".eta").textContent = "";
+  card.querySelector(".eta-sep").classList.add("hidden");
   card.dataset.done = "1";
   if (card.dataset.cancelled) setStatus(card, "warn", "Cancelado");
   else if (card.dataset.err) setStatus(card, "err", "Error");

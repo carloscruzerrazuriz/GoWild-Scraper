@@ -26,12 +26,15 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-# Paralelismo local: más agresivo que en Colab (ver docstring).
-FAST_WORKERS = 12
+# Paralelismo local de Fast. Se bajó de 12→8: con 12 (y peor si corría junto a
+# otros jobs Sodimac) Cloudflare empezaba a devolver challenges y se acumulaban
+# tandas de "error de red persistente" (categorías incompletas). 8 es el número
+# que el Colab probó estable. Ver también el backoff de _fetch_page en el engine.
+FAST_WORKERS = 8
 # Presupuesto TOTAL de workers de Fast repartido entre los jobs Fast activos
-# (el server calcula params["_workers"] al lanzar). Evita que 3× Fast disparen
-# 36 requests concurrentes a Sodimac → 429/bloqueo de Cloudflare.
-FAST_WORKER_BUDGET = 12
+# (el server calcula params["_workers"] al lanzar). Evita que N× Fast disparen
+# demasiadas requests concurrentes a Sodimac → 429/bloqueo de Cloudflare.
+FAST_WORKER_BUDGET = 8
 
 # UA propio: `maestra_sodimac` no exporta USER_AGENT (sí lo hace sodimac_engine).
 USER_AGENT = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -293,8 +296,7 @@ async def run_seccion(params, emit, outdir: Path, tag: str = ""):
     shot_dir = _shots_dir(outdir, tag) if shots else None
 
     all_rows = []
-    total_units = len(stores) * len(subcats)
-    unit = 0
+    n_st, n_sub = len(stores), len(subcats)
     prog = _NullProg()
 
     async with Stealth().use_async(async_playwright()) as pw:
@@ -304,20 +306,20 @@ async def run_seccion(params, emit, outdir: Path, tag: str = ""):
                                       viewport={"width": 1280, "height": 900},
                                       color_scheme="light")
             page = await ctx.new_page()
-            for store in stores:
+            for si, store in enumerate(stores, 1):
+                emit({"type": "progress", "phase": "zona", "done": si, "total": n_st, "msg": store["name"]})
                 emit({"type": "info", "msg": f"Fijando zona: {store['name']}…"})
                 ok = await ms.set_zone_with_retry(page, store["region"], store["comuna"])
                 if not ok:
                     emit({"type": "warn", "msg": f"No se pudo fijar zona en {store['name']}, se salta."})
-                    unit += len(subcats)
                     continue
                 # dedup por SKU dentro de cada tienda (igual que el Colab)
                 seen = {r["SKU"] for r in all_rows
                         if r.get("Tienda") == store["id"] and r.get("SKU")}
-                for sc_name, sc_url in subcats:
-                    unit += 1
-                    emit({"type": "progress", "phase": "subcat", "done": unit,
-                          "total": total_units, "msg": f"{store['name']} · {sc_name}"})
+                for sj, (sc_name, sc_url) in enumerate(subcats, 1):
+                    emit({"type": "progress", "phase": "subcat", "done": sj, "total": n_sub,
+                          "msg": f"{store['name']} · {section_name} · {sc_name}",
+                          "frac": ((si - 1) * n_sub + sj) / (n_st * n_sub)})
                     res = await ms.scrape_subcat(
                         page, section_name, sc_name, sc_url, prog, None,
                         capture_screenshots=shots, only_sodimac=only_sod,
@@ -358,7 +360,8 @@ async def _run_seccion_falabella(params, emit, outdir, tag=""):
     section_name = params.get("section") or "Sección"
     only_fa = not params.get("include_non_sodimac")  # "solo Falabella" (mismo toggle)
     shots = params.get("screenshots", False)
-    all_rows, total_units, unit, prog = [], len(stores) * len(subcats), 0, _NullProg()
+    all_rows, prog = [], _NullProg()
+    n_st, n_sub = len(stores), len(subcats)
 
     async with Stealth().use_async(async_playwright()) as pw:
         b = await pw.chromium.launch(headless=True, args=["--no-sandbox"])
@@ -366,18 +369,18 @@ async def _run_seccion_falabella(params, emit, outdir, tag=""):
             ctx = await b.new_context(user_agent=USER_AGENT,
                                       viewport={"width": 1280, "height": 900}, color_scheme="light")
             page = await ctx.new_page()
-            for store in stores:
+            for si, store in enumerate(stores, 1):
+                emit({"type": "progress", "phase": "zona", "done": si, "total": n_st, "msg": store["name"]})
                 emit({"type": "info", "msg": f"Fijando zona: {store['name']}…"})
                 ok = await mf.set_zone_with_retry(page, store["region"], store["comuna"])
                 if not ok:
                     emit({"type": "warn", "msg": f"No se pudo fijar zona en {store['name']}, se salta."})
-                    unit += len(subcats)
                     continue
                 seen = {r["SKU"] for r in all_rows if r.get("Tienda") == store["id"] and r.get("SKU")}
-                for sc_name, sc_url in subcats:
-                    unit += 1
-                    emit({"type": "progress", "phase": "subcat", "done": unit,
-                          "total": total_units, "msg": f"{store['name']} · {sc_name}"})
+                for sj, (sc_name, sc_url) in enumerate(subcats, 1):
+                    emit({"type": "progress", "phase": "subcat", "done": sj, "total": n_sub,
+                          "msg": f"{store['name']} · {section_name} · {sc_name}",
+                          "frac": ((si - 1) * n_sub + sj) / (n_st * n_sub)})
                     res = await mf.scrape_subcat(page, section_name, sc_name, sc_url, prog, None,
                                                  download_images=shots, only_falabella=only_fa)
                     for r in res.get("rows", []):
@@ -421,18 +424,18 @@ async def _run_seccion_construmart(params, emit, outdir, tag=""):
             page = await ctx.new_page()
             all_st = await mc.discover_stores(page)
             stores = [s for s in all_st if s["id"] in wanted] or all_st[:1]
-            total_units, unit = len(stores) * len(subcats), 0
-            for store in stores:
+            n_st, n_sub = len(stores), len(subcats)
+            for si, store in enumerate(stores, 1):
+                emit({"type": "progress", "phase": "zona", "done": si, "total": n_st, "msg": store["name"]})
                 emit({"type": "info", "msg": f"Fijando tienda: {store['name']}…"})
                 ok = await mc.set_store_with_retry(page, store["id"], store.get("region"))
                 if not ok:
                     emit({"type": "warn", "msg": f"No se pudo fijar {store['name']}, se salta."})
-                    unit += len(subcats)
                     continue
-                for sc_name, sc_url in subcats:
-                    unit += 1
-                    emit({"type": "progress", "phase": "subcat", "done": unit,
-                          "total": total_units, "msg": f"{store['name']} · {sc_name}"})
+                for sj, (sc_name, sc_url) in enumerate(subcats, 1):
+                    emit({"type": "progress", "phase": "subcat", "done": sj, "total": n_sub,
+                          "msg": f"{store['name']} · {section_name} · {sc_name}",
+                          "frac": ((si - 1) * n_sub + sj) / (n_st * n_sub)})
                     res = await mc.scrape_subcat(page, section_name, sc_name, sc_url, store, prog, None,
                                                  download_images=shots)
                     all_rows.extend(res.get("rows", []))
@@ -479,11 +482,14 @@ async def run_fast(params, emit, outdir: Path, tag: str = ""):
             wanted = set(sections)
             tree = [(sec, subs) for sec, subs in tree if sec in wanted]
         n_sub = sum(len(s) for _, s in tree)
+        nst = len(stores)
+        emit({"type": "progress", "phase": "zona", "done": i, "total": nst, "msg": store["name"]})
         emit({"type": "info", "msg": f"{store['name']}: barriendo {n_sub} subcategorías…"})
 
-        def subcat_cb(done, total, sec, name, kept, scanned, status=None):
+        def subcat_cb(done, total, sec, name, kept, scanned, status=None, _i=i, _nst=nst):
             emit({"type": "progress", "phase": "subcat", "done": done, "total": total,
-                  "msg": f"{sec[:22]} · {name[:22]}"})
+                  "msg": f"{store['name']} · {sec[:20]} · {name[:20]}",
+                  "frac": (_i - 1 + done / max(total, 1)) / _nst})
             # filas EN VIVO: acumula lo conservado por subcat (antes el count solo
             # salía al terminar la tienda entera → ~9 min en 0).
             prog["rows"] += kept
