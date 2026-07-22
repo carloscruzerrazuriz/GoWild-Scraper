@@ -120,8 +120,58 @@ def build_template_bytes(tool: str):
 
 
 # ── 1. MK7 — Buscador por SKU ───────────────────────────────────────────────
+def _mk7_positional_progress(emit, total_stores):
+    """Adapta el progress_cb POSICIONAL de Falabella/Construmart
+    (i, total, store, count, rows_so_far) al stream de eventos del desktop."""
+    def cb(i, total, store, count, rows_so_far):
+        tot = total or total_stores
+        emit({"type": "progress", "phase": "zona", "done": max(0, i - 1), "total": tot,
+              "msg": f"Tienda {i}/{tot}: {(store or {}).get('name', '')}"})
+        emit({"type": "count", "rows": rows_so_far or 0})
+    return cb
+
+
+async def _run_mk7_generic(params, emit, outdir, tag, mod, out_base, label):
+    """MK7 para Falabella/Construmart: mismo contrato de engine
+    (read_input / search_skus(metas, stores) / write_output(rows, path) / ALL_STORES)."""
+    stores = [s for s in mod.ALL_STORES if s["id"] in set(params["store_ids"])]
+    if not stores:
+        raise ValueError("No seleccionaste ninguna tienda.")
+    df, desc_col, sku_col, easy_col = mod.read_input(params["input_path"])
+    has_easy, has_desc = easy_col in df.columns, desc_col in df.columns
+    metas, seen = [], set()
+    for _, r in df.iterrows():
+        sku = str(r[sku_col]).strip()
+        if not sku or sku in seen:
+            continue
+        seen.add(sku)
+        metas.append({"sku": sku,
+                      "easy": str(r[easy_col]).strip() if has_easy else "",
+                      "desc": str(r[desc_col]).strip() if has_desc else ""})
+    if not metas:
+        raise ValueError("El archivo no tiene SKUs válidos.")
+    emit({"type": "info", "msg": f"{len(metas)} SKUs · {len(stores)} tienda(s) · {label}"})
+    rows = await mod.search_skus(
+        metas, stores, screenshot=bool(params.get("screenshots")), headless=True,
+        progress_cb=_mk7_positional_progress(emit, len(stores)))
+    if not rows:
+        raise RuntimeError(f"No se encontró ningún SKU en {label} para las tiendas elegidas.")
+    out = outdir / _outname(out_base, tag)
+    emit({"type": "count", "rows": len(rows)})
+    emit({"type": "info", "msg": f"Escribiendo Excel ({len(rows)} filas)…"})
+    mod.write_output(rows, str(out))
+    return out
+
+
 async def run_mk7(params, emit, outdir: Path, tag: str = ""):
-    """params: {input_path, store_ids, screenshots}. Devuelve la ruta del Excel."""
+    """params: {retailer, input_path, store_ids, screenshots}. Devuelve la ruta del Excel."""
+    retailer = params.get("retailer", "sodimac")
+    if retailer == "falabella":
+        from engines import falabella_engine as _fe
+        return await _run_mk7_generic(params, emit, outdir, tag, _fe, "MK7_Falabella", "Falabella")
+    if retailer == "construmart":
+        from engines import construmart_engine as _ce
+        return await _run_mk7_generic(params, emit, outdir, tag, _ce, "MK7_Construmart", "Construmart")
     from engines import sodimac_engine as se
 
     stores = [s for s in se.ALL_STORES if s["id"] in set(params["store_ids"])]
@@ -157,16 +207,15 @@ class _NullProg:
     def advance(self, *a, **k): pass
 
 
-async def discover_sections_desktop(emit, include_landing=True):
-    """Descubre el árbol de secciones (abre el navegador una vez).
+async def discover_sections_desktop(emit, include_landing=True, retailer="sodimac"):
+    """Descubre el árbol de secciones (abre el navegador una vez) para el retailer.
 
     `include_landing=False` para Ferni: su motor deduplica sólo DENTRO de cada
-    subcategoría, así que las entradas "Todo X" (que hacen roll-up de sus
-    hermanas) le duplicarían filas. Mismo criterio que su launcher de Colab.
+    subcategoría, así que las entradas "Todo X" (roll-up) le duplicarían filas.
+    Falabella/Construmart no aceptan include_landing (descubridor propio).
     """
     from playwright.async_api import async_playwright
     from playwright_stealth import Stealth
-    from engines import maestra_sodimac as ms
 
     emit({"type": "info", "msg": "Abriendo navegador y descubriendo secciones…"})
     async with Stealth().use_async(async_playwright()) as pw:
@@ -175,15 +224,58 @@ async def discover_sections_desktop(emit, include_landing=True):
             ctx = await b.new_context(user_agent=USER_AGENT,
                                       viewport={"width": 1280, "height": 900})
             pg = await ctx.new_page()
-            tree = await ms.discover_sections(pg, include_landing=include_landing)
+            if retailer == "falabella":
+                from engines import maestra_falabella as m
+                tree = await m.discover_sections(pg)
+            elif retailer == "construmart":
+                from engines import maestra_construmart as m
+                tree = await m.discover_sections(pg)
+            else:
+                from engines import maestra_sodimac as m
+                tree = await m.discover_sections(pg, include_landing=include_landing)
         finally:
             await b.close()
-    return [{"section": sec, "subcats": [{"name": n, "url": u} for n, u in subs]}
+    # subcats pueden ser 2- o 3-tuplas (Falabella) → tomamos nombre y URL.
+    return [{"section": sec,
+             "subcats": [{"name": s[0], "url": s[1]} for s in subs]}
             for sec, subs in tree]
 
 
+def stores_for_retailer(retailer):
+    """Lista estática de tiendas (Sodimac/Falabella = 42 Easy). Construmart es
+    dinámico → discover_stores_desktop (async)."""
+    if retailer == "falabella":
+        from engines import maestra_falabella as m
+    else:
+        from engines import maestra_sodimac as m
+    return [{"id": s["id"], "name": s["name"], "region": s["region"],
+             "comuna": s.get("comuna", "")} for s in m.ALL_STORES]
+
+
+async def discover_stores_desktop(retailer="construmart"):
+    """Descubre las tiendas de Construmart (popup del sitio). Abre el navegador."""
+    from playwright.async_api import async_playwright
+    from playwright_stealth import Stealth
+    from engines import maestra_construmart as mc
+    async with Stealth().use_async(async_playwright()) as pw:
+        b = await pw.chromium.launch(headless=True, args=["--no-sandbox"])
+        try:
+            ctx = await b.new_context(user_agent=USER_AGENT, viewport={"width": 1280, "height": 900})
+            pg = await ctx.new_page()
+            stores = await mc.discover_stores(pg)
+        finally:
+            await b.close()
+    return [{"id": s["id"], "name": s["name"], "region": s.get("region", ""),
+             "comuna": s.get("comuna", "")} for s in stores]
+
+
 async def run_seccion(params, emit, outdir: Path, tag: str = ""):
-    """params: {section, subcats:[{name,url}], store_ids, only_sodimac, screenshots}."""
+    """params: {retailer, section, subcats:[{name,url}], store_ids, ...}."""
+    retailer = params.get("retailer", "sodimac")
+    if retailer == "falabella":
+        return await _run_seccion_falabella(params, emit, outdir, tag)
+    if retailer == "construmart":
+        return await _run_seccion_construmart(params, emit, outdir, tag)
     from playwright.async_api import async_playwright
     from playwright_stealth import Stealth
     from engines import maestra_sodimac as ms
@@ -249,6 +341,110 @@ async def run_seccion(params, emit, outdir: Path, tag: str = ""):
     out = outdir / _outname(f"Seccion_{_safe(section_name)}", tag)
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
     ms.write_excel(all_rows, str(out), with_images=shots)
+    return out
+
+
+# ── 2b. Maestra Falabella / Construmart ─────────────────────────────────────
+async def _run_seccion_falabella(params, emit, outdir, tag=""):
+    """Igual a Sodimac pero por ZONA (region/comuna) con maestra_falabella."""
+    from playwright.async_api import async_playwright
+    from playwright_stealth import Stealth
+    from engines import maestra_falabella as mf
+
+    stores = [s for s in mf.ALL_STORES if s["id"] in set(params["store_ids"])]
+    subcats = [(s["name"], s["url"]) for s in params["subcats"]]
+    if not stores or not subcats:
+        raise ValueError("Falta seleccionar tienda(s) o subcategoría(s).")
+    section_name = params.get("section") or "Sección"
+    only_fa = not params.get("include_non_sodimac")  # "solo Falabella" (mismo toggle)
+    shots = params.get("screenshots", False)
+    all_rows, total_units, unit, prog = [], len(stores) * len(subcats), 0, _NullProg()
+
+    async with Stealth().use_async(async_playwright()) as pw:
+        b = await pw.chromium.launch(headless=True, args=["--no-sandbox"])
+        try:
+            ctx = await b.new_context(user_agent=USER_AGENT,
+                                      viewport={"width": 1280, "height": 900}, color_scheme="light")
+            page = await ctx.new_page()
+            for store in stores:
+                emit({"type": "info", "msg": f"Fijando zona: {store['name']}…"})
+                ok = await mf.set_zone_with_retry(page, store["region"], store["comuna"])
+                if not ok:
+                    emit({"type": "warn", "msg": f"No se pudo fijar zona en {store['name']}, se salta."})
+                    unit += len(subcats)
+                    continue
+                seen = {r["SKU"] for r in all_rows if r.get("Tienda") == store["id"] and r.get("SKU")}
+                for sc_name, sc_url in subcats:
+                    unit += 1
+                    emit({"type": "progress", "phase": "subcat", "done": unit,
+                          "total": total_units, "msg": f"{store['name']} · {sc_name}"})
+                    res = await mf.scrape_subcat(page, section_name, sc_name, sc_url, prog, None,
+                                                 download_images=shots, only_falabella=only_fa)
+                    for r in res.get("rows", []):
+                        sku = r.get("SKU")
+                        if not sku or sku in seen:
+                            continue
+                        seen.add(sku)
+                        all_rows.append({"Tienda": store["id"], "Nombre Tienda": store["name"], **r})
+                    emit({"type": "count", "rows": len(all_rows)})
+        finally:
+            await b.close()
+
+    if not all_rows:
+        raise RuntimeError("No se obtuvo ninguna fila.")
+    out = outdir / _outname(f"Seccion_Falabella_{_safe(section_name)}", tag)
+    emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
+    mf.write_excel(all_rows, str(out), with_images=shots)
+    return out
+
+
+async def _run_seccion_construmart(params, emit, outdir, tag=""):
+    """Construmart: por TIENDA (discover_stores dinámico + set_store). Las filas ya
+    traen Tienda/Nombre Tienda desde el engine."""
+    from playwright.async_api import async_playwright
+    from playwright_stealth import Stealth
+    from engines import maestra_construmart as mc
+
+    subcats = [(s["name"], s["url"]) for s in params["subcats"]]
+    if not subcats:
+        raise ValueError("Falta seleccionar subcategoría(s).")
+    section_name = params.get("section") or "Sección"
+    shots = params.get("screenshots", False)
+    wanted = set(params.get("store_ids") or [])
+    all_rows, prog = [], _NullProg()
+
+    async with Stealth().use_async(async_playwright()) as pw:
+        b = await pw.chromium.launch(headless=True, args=["--no-sandbox"])
+        try:
+            ctx = await b.new_context(user_agent=USER_AGENT,
+                                      viewport={"width": 1280, "height": 900}, color_scheme="light")
+            page = await ctx.new_page()
+            all_st = await mc.discover_stores(page)
+            stores = [s for s in all_st if s["id"] in wanted] or all_st[:1]
+            total_units, unit = len(stores) * len(subcats), 0
+            for store in stores:
+                emit({"type": "info", "msg": f"Fijando tienda: {store['name']}…"})
+                ok = await mc.set_store_with_retry(page, store["id"], store.get("region"))
+                if not ok:
+                    emit({"type": "warn", "msg": f"No se pudo fijar {store['name']}, se salta."})
+                    unit += len(subcats)
+                    continue
+                for sc_name, sc_url in subcats:
+                    unit += 1
+                    emit({"type": "progress", "phase": "subcat", "done": unit,
+                          "total": total_units, "msg": f"{store['name']} · {sc_name}"})
+                    res = await mc.scrape_subcat(page, section_name, sc_name, sc_url, store, prog, None,
+                                                 download_images=shots)
+                    all_rows.extend(res.get("rows", []))
+                    emit({"type": "count", "rows": len(all_rows)})
+        finally:
+            await b.close()
+
+    if not all_rows:
+        raise RuntimeError("No se obtuvo ninguna fila.")
+    out = outdir / _outname(f"Seccion_Construmart_{_safe(section_name)}", tag)
+    emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
+    mc.write_excel(all_rows, str(out), with_images=shots)
     return out
 
 

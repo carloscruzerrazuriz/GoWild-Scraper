@@ -1,7 +1,24 @@
 /* Copyright (c) 2026 Carlos Cruz Errazuriz. All rights reserved. Proprietary. */
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
-const state = { tool: "mk7", stores: [], sections: [], ferniSections: [], upload: null, storeSel: new Set() };
+const state = { tool: "mk7", retailer: "sodimac", loadedRetailer: null, stores: [], sections: [], ferniSections: [], upload: null, storeSel: new Set() };
+
+/* ── retailer (solo Buscar por SKU y Catálogo) ── */
+const MULTI_RETAILER = new Set(["mk7", "seccion"]);
+function syncRetailerSeg() {
+  $$("#retailerSeg button").forEach(b => b.classList.toggle("on", b.dataset.ret === state.retailer));
+}
+function updateRetailerRow() {
+  const multi = MULTI_RETAILER.has(state.tool);
+  $("#retailerRow").classList.toggle("hidden", !multi);
+  if (!multi && state.retailer !== "sodimac") selectRetailer("sodimac");
+}
+async function selectRetailer(ret) {
+  state.retailer = ret; syncRetailerSeg();
+  state.sections = []; $("#secWrap")?.classList.add("hidden");  // secciones son por-retailer
+  if (state.loadedRetailer !== ret) await loadStores(ret);
+}
+$$("#retailerSeg button").forEach(b => b.onclick = () => selectRetailer(b.dataset.ret));
 
 /* ── tema (claro por defecto, recordado) ── */
 (function initTheme() {
@@ -24,14 +41,29 @@ $$(".tool").forEach(b => b.onclick = () => {
   $("#paneKick").textContent = b.dataset.kick;
   $$(".pane").forEach(p => p.classList.add("hidden"));
   $(`#pane-${state.tool}`).classList.remove("hidden");
+  updateRetailerRow();
 });
 
 /* ── tiendas (chips + búsqueda + colapso) ── */
 const RM = "Metropolitana";
-async function loadStores() {
-  state.stores = await (await fetch("/api/stores")).json();
-  state.storeSel = new Set(state.stores.some(s => s.id === "E522") ? ["E522"] : []);
-  renderChips(); summ();
+async function loadStores(retailer) {
+  retailer = retailer || state.retailer || "sodimac";
+  if (retailer === "construmart") {
+    $("#storeSummary").textContent = "Descubriendo tiendas…";
+    $("#storeSub").textContent = "abriendo navegador (~20s)";
+  }
+  try {
+    const data = await (await fetch("/api/stores?retailer=" + retailer)).json();
+    if (!Array.isArray(data)) throw new Error(data && data.error ? data.error : "respuesta inválida");
+    state.stores = data;
+  } catch (e) {
+    showGlobalError("No se pudieron cargar las tiendas: " + (e.message || e));
+    state.stores = [];
+  }
+  state.loadedRetailer = retailer;
+  const def = state.stores.find(s => s.id === "E522") || state.stores[0];
+  state.storeSel = new Set(def ? [def.id] : []);
+  renderChips($("#storeSearch")?.value || ""); summ();
 }
 function renderChips(filter = "") {
   const f = filter.toLowerCase();
@@ -96,7 +128,8 @@ async function fetchSections(btn, ferni = false) {
   btn.textContent = "Abriendo navegador… (~20s)";
   btn.disabled = true;
   try {
-    const res = await fetch("/api/sections" + (ferni ? "?ferni=1" : ""));
+    const qs = ferni ? "?ferni=1" : ("?retailer=" + encodeURIComponent(state.retailer));
+    const res = await fetch("/api/sections" + qs);
     const tree = await res.json();
     if (!res.ok || tree.error) throw new Error(tree.error || ("HTTP " + res.status));
     if (ferni) state.ferniSections = tree; else state.sections = tree;
@@ -169,7 +202,7 @@ function buildParams() {
   if (!stores.length) throw new Error("Selecciona al menos una tienda.");
   if (state.tool === "mk7") {
     if (!state.upload) throw new Error("Sube el archivo Excel con los SKUs.");
-    return { input_path: state.upload, store_ids: stores, screenshots: $("#mk7Shots").checked };
+    return { retailer: state.retailer, input_path: state.upload, store_ids: stores, screenshots: $("#mk7Shots").checked };
   }
   if (state.tool === "seccion") {
     const sec = state.sections[$("#secSelect")?.value];
@@ -177,7 +210,7 @@ function buildParams() {
     const subs = $$(".sub:checked").map(c => sec.subcats[+c.value]);
     if (!subs.length) throw new Error("Marca al menos una subcategoría.");
     return {
-      section: sec.section, subcats: subs, store_ids: stores,
+      retailer: state.retailer, section: sec.section, subcats: subs, store_ids: stores,
       include_non_sodimac: $("#secNonSod").checked, screenshots: $("#secShots").checked
     };
   }
@@ -408,4 +441,4 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-loadStores(); loadOutputs();
+loadStores(); loadOutputs(); updateRetailerRow();

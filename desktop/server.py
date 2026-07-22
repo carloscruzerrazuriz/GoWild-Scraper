@@ -188,23 +188,36 @@ class Handler(BaseHTTPRequestHandler):
             return self._file(UI_DIR / route[4:])
 
         if route == "/api/stores":
-            from engines import maestra_sodimac as ms
-            return self._json([{"id": s["id"], "name": s["name"],
-                                "region": s["region"], "comuna": s["comuna"]}
-                               for s in ms.ALL_STORES])
+            # ?retailer=sodimac|falabella (estáticas) | construmart (descubre en vivo)
+            retailer = (parse_qs(p.query).get("retailer") or ["sodimac"])[0]
+            try:
+                from orchestrators import stores_for_retailer, discover_stores_desktop
+                if retailer == "construmart":
+                    loop = _new_loop(); asyncio.set_event_loop(loop)
+                    try:
+                        stores = loop.run_until_complete(discover_stores_desktop("construmart"))
+                    finally:
+                        loop.close()
+                    return self._json(stores)
+                return self._json(stores_for_retailer(retailer))
+            except Exception as e:  # noqa: BLE001
+                tb = traceback.format_exc()
+                print("  [ERROR /api/stores]\n" + tb, flush=True)
+                return self._json({"error": str(e), "detail": tb[-1500:]}, 500)
 
         if route == "/api/sections":
             # descubre el árbol (abre navegador una vez); puede tardar ~20s.
-            # ?ferni=1 → sin entradas isLanding (Ferni no dedup entre subcats).
+            # ?ferni=1 → sin isLanding. ?retailer=sodimac|falabella|construmart.
             try:
                 from orchestrators import discover_sections_desktop
                 q = parse_qs(p.query)
                 incl = (q.get("ferni") or ["0"])[0] != "1"
+                retailer = (q.get("retailer") or ["sodimac"])[0]
                 loop = _new_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     tree = loop.run_until_complete(
-                        discover_sections_desktop(lambda e: None, include_landing=incl))
+                        discover_sections_desktop(lambda e: None, include_landing=incl, retailer=retailer))
                 finally:
                     loop.close()
                 return self._json(tree)
