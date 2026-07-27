@@ -184,6 +184,13 @@ $$("[data-sub]").forEach(b => b.onclick = () => {
   $$(".sub").forEach(c => c.checked = b.dataset.sub === "all"); countSubs();
 });
 
+/* ── Catálogo: modo (menú del sitio vs URL directa, como en Colab) ── */
+$$("[name=secMode]").forEach(r => r.onchange = () => {
+  const url = r.value === "url" && r.checked;
+  $("#secMenuWrap").classList.toggle("hidden", url);
+  $("#secUrlWrap").classList.toggle("hidden", !url);
+});
+
 /* ── Fast: alcance ── */
 $$("[name=fastScope]").forEach(r => r.onchange = () => {
   $("#fastSecWrap").classList.toggle("hidden", r.value !== "sections" || !r.checked);
@@ -205,6 +212,16 @@ function buildParams() {
     return { retailer: state.retailer, input_path: state.upload, store_ids: stores, screenshots: $("#mk7Shots").checked };
   }
   if (state.tool === "seccion") {
+    const mode = $("[name=secMode]:checked")?.value || "menu";
+    if (mode === "url") {
+      const url = $("#secUrl").value.trim();
+      if (!/^https?:\/\//.test(url)) throw new Error("Pega una URL válida de la categoría (empieza con http).");
+      const name = $("#secUrlName").value.trim() || "URL personalizada";
+      return {
+        retailer: state.retailer, section: "Custom", subcats: [{ name, url }], store_ids: stores,
+        include_non_sodimac: $("#secNonSod").checked, screenshots: $("#secShots").checked
+      };
+    }
     const sec = state.sections[$("#secSelect")?.value];
     if (!sec) throw new Error("Carga y elige una sección.");
     const subs = $$(".sub:checked").map(c => sec.subcats[+c.value]);

@@ -106,15 +106,25 @@
       </section>
 
       <section class="card raised pane hidden" id="pane-seccion">
-        <p class="lead">Recorre el árbol de categorías de Sodimac y arma el catálogo.</p>
-        <button class="btn ghost" id="loadSections">Cargar secciones</button>
-        <div id="secWrap" class="hidden">
-          <select id="secSelect" class="select"></select>
-          <div class="subhead">
-            <span id="subCount">—</span>
-            <span><button class="mini" data-sub="all">Todas</button><button class="mini" data-sub="none">Ninguna</button></span>
+        <p class="lead">Recorre el árbol de categorías y arma el catálogo.</p>
+        <div class="radios">
+          <label><input type="radio" name="secMode" value="menu" checked><span>Sección del menú</span></label>
+          <label><input type="radio" name="secMode" value="url"><span>URL personalizada</span></label>
+        </div>
+        <div id="secMenuWrap">
+          <button class="btn ghost" id="loadSections">Cargar secciones</button>
+          <div id="secWrap" class="hidden">
+            <select id="secSelect" class="select"></select>
+            <div class="subhead">
+              <span id="subCount">—</span>
+              <span><button class="mini" data-sub="all">Todas</button><button class="mini" data-sub="none">Ninguna</button></span>
+            </div>
+            <div class="checkgrid" id="subcats"></div>
           </div>
-          <div class="checkgrid" id="subcats"></div>
+        </div>
+        <div id="secUrlWrap" class="hidden">
+          <input type="text" id="secUrl" class="input" placeholder="https://www.sodimac.cl/sodimac-cl/lista/...">
+          <input type="text" id="secUrlName" class="input" placeholder="Nombre (opcional, ej. Pisos flotantes)">
         </div>
         <label class="switch"><input type="checkbox" id="secNonSod"><span>Incluir marketplace (no-Sodimac)</span></label>
         <label class="switch"><input type="checkbox" id="secShots"><span>Capturar fotos de las cards</span></label>
