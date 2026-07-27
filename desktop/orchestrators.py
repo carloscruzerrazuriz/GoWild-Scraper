@@ -123,6 +123,17 @@ def build_template_bytes(tool: str):
 
 
 # ── 1. MK7 — Buscador por SKU ───────────────────────────────────────────────
+def _post_maestra_async(rows, fuente):
+    """Sube las filas a la Maestra Sodimac (Google Sheet auto-actualizada) en un
+    hilo aparte: no bloquea ni puede romper el job. No-op si la URL no está seteada."""
+    try:
+        import threading
+        from engines import _maestra_post as _mp
+        threading.Thread(target=_mp.post_maestra, args=(list(rows), fuente), daemon=True).start()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _page_progress_cb(emit, store_name, sc_name):
     """Tercera barra 'Páginas': solo emite cuando el paginador YA reveló el total
     (page_progress_cb da (page_num, total_pages); total_pages es None hasta que se
@@ -211,6 +222,7 @@ async def run_mk7(params, emit, outdir: Path, tag: str = ""):
     emit({"type": "count", "rows": len(matches)})
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(matches)} filas)…"})
     se.write_output(df, desc_col, sku_col, easy_col, matches, str(out), stores=stores)
+    _post_maestra_async(matches, "MK7")  # consolidar en la Maestra Sodimac
     return out
 
 
@@ -355,6 +367,7 @@ async def run_seccion(params, emit, outdir: Path, tag: str = ""):
     out = outdir / _outname(f"Seccion_{_safe(section_name)}", tag)
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
     ms.write_excel(all_rows, str(out), with_images=shots)
+    _post_maestra_async(all_rows, "Maestra")  # consolidar en la Maestra Sodimac
     return out
 
 
@@ -526,6 +539,7 @@ async def run_fast(params, emit, outdir: Path, tag: str = ""):
     out = outdir / _outname(f"Fast_{kind}", tag)
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
     ms.write_excel(all_rows, str(out), columns=mf.OUTPUT_COLS, with_images=False)
+    _post_maestra_async(all_rows, "Fast")  # consolidar en la Maestra Sodimac
     return out
 
 
