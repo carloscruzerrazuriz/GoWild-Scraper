@@ -1,0 +1,93 @@
+# Copyright (c) 2026 Carlos Cruz Errazuriz. All rights reserved. Proprietary.
+#
+# Compila Cruzer para macOS (Apple Silicon / arm64) en un runner de GitHub.
+#
+# Por qué acá: PyInstaller NO compila cruzado — un .app de Mac sólo se construye
+# EN un Mac. El runner `macos-latest` es arm64 (M1), así que el repo produce el
+# bundle solo. Espejo del build-windows.yml.
+#
+# Cómo obtener el .app:
+#   - Cada push a main que toque desktop/ deja Cruzer-macOS.zip como *artifact*.
+#   - Al publicar un tag `desktop-vX.Y` se adjunta a la misma Release que el .exe.
+#   - También se puede lanzar a mano desde Actions (workflow_dispatch).
+#
+# ⚠️ El .app va SIN firmar (ad-hoc). Al bajarlo, Gatekeeper lo pone en cuarentena
+#   → "está dañado". Para abrirlo la 1ª vez: quitar la cuarentena con
+#   `xattr -dr com.apple.quarantine Cruzer.app` o clic derecho → Abrir.
+#   (Firmar + notarizar requiere cuenta Apple Developer, ~US$99/año.)
+
+name: Build macOS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/build-macos.yml"
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write        # necesario para crear/actualizar la Release
+
+jobs:
+  build:
+    runs-on: macos-latest        # arm64 (Apple Silicon)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"       # estable con PyInstaller
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r desktop/requirements.txt
+          pip install pyinstaller==6.11.1
+
+      - name: Compilar el .app
+        working-directory: desktop/build
+        run: pyinstaller --clean --noconfirm cruzer-mac.spec
+
+      - name: Verificar que el bundle se generó
+        working-directory: desktop/build
+        run: |
+          APP="dist/Cruzer.app"
+          if [ ! -d "$APP" ]; then echo "No se generó $APP"; exit 1; fi
+          if [ ! -x "$APP/Contents/MacOS/Cruzer" ]; then echo "Falta el binario"; exit 1; fi
+          MB=$(du -sm "$APP" | cut -f1)
+          echo "OK: Cruzer.app generado (${MB} MB)"
+          if [ "$MB" -lt 80 ]; then echo "Sospechosamente chico"; exit 1; fi
+
+      - name: Empaquetar (ditto preserva permisos/estructura del .app)
+        working-directory: desktop/build
+        run: ditto -c -k --keepParent dist/Cruzer.app Cruzer-macOS.zip
+
+      - name: Publicar como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cruzer-macOS
+          path: desktop/build/Cruzer-macOS.zip
+          retention-days: 30
+
+      - name: Adjuntar a la Release (sólo en tags desktop-v*)
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: desktop/build/Cruzer-macOS.zip
+          name: Cruzer ${{ github.ref_name }}
+          body: |
+            **Cruzer**
+
+            - **Windows**: descarga `Cruzer.exe`, déjalo en el Escritorio y doble clic.
+            - **Mac (Apple Silicon)**: descarga `Cruzer-macOS.zip`, descomprímelo y
+              abre `Cruzer.app`. La 1ª vez macOS lo bloquea por venir sin firmar:
+              **clic derecho → Abrir** (o en Terminal: `xattr -dr com.apple.quarantine Cruzer.app`).
+
+            Ambos: la 1ª vez instalan el navegador (~150 MB, una sola vez), se
+            actualizan solos desde GitHub, y guardan los Excel en `Documentos/Cruzer`.
+
+            Herramientas: MK7 · Sección · Fast · Ferni (SKU y Sección) — Sodimac,
+            Falabella y Construmart.

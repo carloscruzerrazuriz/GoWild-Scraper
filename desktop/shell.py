@@ -194,6 +194,41 @@ def free_port(start=DEFAULT_PORT) -> int:
     return start
 
 
+def _find_chrome():
+    """Ruta a Google Chrome, o None. Preferimos Chrome porque es donde se
+    desarrolla y prueba la UI; así todos ven lo MISMO. Sin esto, `webbrowser.open`
+    abre el navegador POR DEFECTO de cada PC (Chrome/Firefox/Edge según el usuario)
+    — de ahí la inconsistencia reportada."""
+    if sys.platform == "darwin":
+        p = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        return p if Path(p).exists() else None
+    if os.name == "nt":
+        for p in (r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                  r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                  os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe")):
+            if Path(p).exists():
+                return p
+        return None
+    import shutil as _sh
+    return _sh.which("google-chrome") or _sh.which("chromium") or None
+
+
+def _open_browser(url):
+    """Abre `url` en Chrome si está; si no, cae al navegador por defecto."""
+    chrome = _find_chrome()
+    if chrome:
+        try:
+            import subprocess
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", "-a", "Google Chrome", url])
+            else:
+                subprocess.Popen([chrome, url])
+            return
+        except Exception:  # noqa: BLE001
+            pass
+    webbrowser.open(url)  # fallback: navegador por defecto del sistema
+
+
 def _minimize_console():
     """Minimiza la ventana de consola en Windows una vez abierta la app.
 
@@ -255,7 +290,7 @@ def main():
     print("  Para salir de la app: cierra esta ventana.\n", flush=True)
 
     def _open_and_minimize():
-        webbrowser.open(url)
+        _open_browser(url)
         _minimize_console()
 
     threading.Timer(1.2, _open_and_minimize).start()
