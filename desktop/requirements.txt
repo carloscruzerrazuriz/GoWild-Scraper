@@ -7,3 +7,8 @@ pandas>=2.0
 openpyxl>=3.1
 beautifulsoup4>=4.12
 Pillow>=10.0
+# Ventana nativa (app propia con ícono en la barra de tareas). Usa el motor web
+# del SO: WebView2/Edge en Windows (pythonnet), WKWebView en Mac (pyobjc).
+# Si falta o falla en runtime, el shell cae al navegador (fallback).
+pywebview>=5.0
+pythonnet>=3.0 ; sys_platform == "win32"

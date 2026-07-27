@@ -18,13 +18,15 @@ datas, binaries, hiddenimports = [], [], []
 # código descargado (numpy 2.x carga extensiones C que sólo aparecen con
 # collect_all; playwright arrastra su driver Node).
 for pkg in ("playwright", "playwright_stealth", "numpy", "pandas",
-            "openpyxl", "bs4", "PIL"):
+            "openpyxl", "bs4", "PIL", "webview"):
     d, b, h = collect_all(pkg)
     datas += d; binaries += b; hiddenimports += h
 
 hiddenimports += [
     "asyncio", "queue", "http.server", "socketserver",
     "urllib.request", "zipfile", "json", "csv", "sqlite3",
+    # backend de pywebview en Mac (WKWebView vía pyobjc)
+    "objc", "Foundation", "AppKit", "WebKit", "Quartz",
 ]
 
 a = Analysis(

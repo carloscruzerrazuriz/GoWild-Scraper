@@ -26,6 +26,7 @@ import shutil
 import socket
 import sys
 import threading
+import time as _time
 import urllib.request
 import webbrowser
 import zipfile
@@ -242,6 +243,28 @@ def _minimize_console():
         pass
 
 
+def _run_native_window(url):
+    """Abre la UI en una VENTANA NATIVA propia (pywebview) — su propio ícono en la
+    barra de tareas / dock, sin pestañas de navegador. Usa el motor web del SO
+    (WebView2/Edge en Windows, WKWebView en Mac). BLOQUEA hasta que se cierra la
+    ventana → cerrar la ventana = cerrar la app.
+
+    Devuelve True si se usó la ventana nativa; False si pywebview no está o falla
+    → el caller cae al NAVEGADOR (comportamiento existente, que NO se borró)."""
+    try:
+        import webview
+    except Exception:  # noqa: BLE001
+        return False
+    try:
+        threading.Timer(0.4, _minimize_console).start()  # esconde la consola redundante
+        webview.create_window("Cruzer", url, width=1280, height=860, min_size=(980, 640))
+        webview.start()   # bloquea; retorna cuando el usuario cierra la ventana
+        return True
+    except Exception as e:  # noqa: BLE001
+        _log(f"(ventana nativa no disponible: {e} — abro en el navegador)")
+        return False
+
+
 def main():
     # Guardia anti-bucle: si un subproceso relanzara el ejecutable (fue el bug de
     # la v1 con `sys.executable`), el hijo detecta la marca y se detiene en vez
@@ -279,20 +302,28 @@ def main():
     _log(f"Servidor local en {url}")
     _log(f"Los Excel se guardan en: {server.OUTPUT_DIR}")
     print("  " + "─" * 40, flush=True)
+
+    # El servidor corre en un hilo daemon; el hilo principal queda libre para la
+    # ventana nativa (pywebview la necesita) o para el bloqueo del fallback.
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+    # PREFERENCIA: ventana nativa propia (ícono en la barra de tareas, sin navegador).
+    # Si pywebview no está / falla → FALLBACK al navegador (lo de siempre, intacto).
+    if _run_native_window(url):
+        httpd.shutdown()
+        return 0
+
     print("  La app está abierta en tu navegador.", flush=True)
     print("  Esta ventana se minimiza sola; NO la cierres mientras trabajas.", flush=True)
     print("  Para salir de la app: cierra esta ventana.\n", flush=True)
-
-    def _open_and_minimize():
-        _open_browser(url)
-        _minimize_console()
-
-    threading.Timer(1.2, _open_and_minimize).start()
+    _open_browser(url)
+    _minimize_console()
     try:
-        httpd.serve_forever()
+        while True:
+            _time.sleep(1)
     except KeyboardInterrupt:
         _log("Cerrando…")
-        httpd.shutdown()
+    httpd.shutdown()
     return 0
 
 
