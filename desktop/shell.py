@@ -63,8 +63,27 @@ _TMP_PREFIX = "cruzer-code-"
 _CODE_DIR: Path | None = None
 
 
+def _startup_logfile():
+    """Documents/Cruzer/cruzer_startup.log — diagnóstico de arranque cuando el .exe
+    va SIN consola (console=False). Queda junto a los Excel."""
+    try:
+        d = Path.home() / "Documents" / "Cruzer"
+        d.mkdir(parents=True, exist_ok=True)
+        return d / "cruzer_startup.log"
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _log(msg):
-    print(f"  {msg}", flush=True)
+    line = f"  {msg}"
+    print(line, flush=True)
+    lf = _startup_logfile()
+    if lf:
+        try:
+            with open(lf, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _sweep_stale(min_age_secs=900):
@@ -274,6 +293,14 @@ def main():
         return 0
     os.environ["CRUZER_RUNNING"] = "1"
 
+    # Reinicia el log de arranque de esta corrida (útil sin consola en Windows).
+    try:
+        _lf = _startup_logfile()
+        if _lf:
+            _lf.write_text(f"Cruzer — arranque {_time.strftime('%Y-%m-%d %H:%M:%S')}\n", encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
     # Navegador de Playwright en ruta PERSISTENTE (no en el _MEI temporal del
     # bundle, que se borra en cada ejecución → el navegador "desaparecía" y
     # ensure_chromium lo re-descargaba cada vez). Debe fijarse ANTES de
@@ -291,7 +318,12 @@ def main():
     print("\n  Cruzer\n  " + "─" * 40, flush=True)
     root = update_code()
     if root is None:
-        input("\n  Presiona Enter para salir…")
+        # Sin consola (console=False) no hay stdin → input() reventaría. Sólo si es TTY.
+        try:
+            if sys.stdin and sys.stdin.isatty():
+                input("\n  Presiona Enter para salir…")
+        except Exception:  # noqa: BLE001
+            pass
         return 1
 
     # El código fresco manda: engines/ desde la raíz, y desktop/ para el server.

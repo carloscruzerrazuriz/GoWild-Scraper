@@ -63,7 +63,11 @@ exe = EXE(
     strip=False,
     upx=False,
     runtime_tmpdir=None,
-    console=True,          # el shell informa estado y hay que dejarla abierta
+    console=False,         # SIN consola: la app es la ventana nativa (pywebview).
+                           # En Windows 11 (Windows Terminal) no se puede ocultar la
+                           # consola en runtime (GetConsoleWindow no devuelve la ventana
+                           # real), así que la única vía es no crearla. El estado de
+                           # arranque queda en Documents/Cruzer/cruzer_startup.log.
     disable_windowed_traceback=False,
     icon="cruzer.ico",     # ícono del .exe (horneado; cambiarlo obliga a recompilar)
 )
