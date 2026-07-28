@@ -22,34 +22,34 @@
     </div>
 
     <nav id="nav">
-      <div class="navlabel">Sodimac</div>
+      <div class="navlabel">Herramientas</div>
       <button class="tool active" data-tool="mk7"
         data-title="Buscar por SKU" data-kick="Sube un Excel de SKUs y compara precios por tienda.">
-        <span class="ic">🔎</span><span class="tt"><b>Buscar por SKU</b><span>por lista de SKU</span></span><span class="chip">MK7</span>
+        <span class="ic">🔎</span><span class="tt"><b>Buscar por SKU</b></span><span class="chip">MK7</span>
       </button>
       <button class="tool" data-tool="seccion"
         data-title="Catálogo por categoría" data-kick="Recorre el árbol de categorías y arma el catálogo.">
-        <span class="ic">🗂️</span><span class="tt"><b>Catálogo</b><span>por categoría</span></span><span class="chip">Sección</span>
+        <span class="ic">🗂️</span><span class="tt"><b>Catálogo</b></span><span class="chip">Sección</span>
       </button>
       <button class="tool" data-tool="fast"
         data-title="Precios por mayor" data-kick="Barrido por HTTP, sin navegador — el más rápido.">
-        <span class="ic">⚡</span><span class="tt"><b>Precios por mayor</b><span>sin navegador</span></span><span class="chip">Fast</span>
+        <span class="ic">⚡</span><span class="tt"><b>Precios por mayor</b></span><span class="chip">Fast</span>
       </button>
 
-      <div class="navlabel">Ferni · puertas</div>
+      <div class="navlabel">Puertas</div>
       <button class="tool" data-tool="ferni_sku"
         data-title="Puertas por SKU" data-kick="1 fila por medida: extrae medida y precio exactos.">
-        <span class="ic">🚪</span><span class="tt"><b>Puertas por SKU</b><span>medida exacta</span></span><span class="chip">Ferni</span>
+        <span class="ic">🚪</span><span class="tt"><b>Puertas por SKU</b></span>
       </button>
       <button class="tool" data-tool="ferni_seccion"
         data-title="Puertas por categoría" data-kick="Recorre categorías y expande cada producto por medida.">
-        <span class="ic">🚪</span><span class="tt"><b>Puertas por categoría</b><span>por sección</span></span><span class="chip">Ferni</span>
+        <span class="ic">🚪</span><span class="tt"><b>Puertas por categoría</b></span>
       </button>
     </nav>
 
     <div class="side-foot">
       <button class="themebtn" id="themeBtn"><span>Tema</span><span id="themeLbl">☀️ Claro</span></button>
-      <div class="envrow"><span class="dot"></span> Corriendo en tu PC · sin límite de sesión</div>
+      <div class="envrow" id="envRow"><span class="dot"></span> <span class="envtxt">Conectado</span></div>
     </div>
   </aside>
 
@@ -142,7 +142,7 @@
           <div class="checkgrid" id="fastSections"></div>
         </div>
         <input type="text" id="fastUrl" class="input hidden" placeholder="https://www.sodimac.cl/sodimac-cl/lista/...">
-        <label class="switch"><input type="checkbox" id="fastWholesale" checked><span>Solo productos con precio mayorista</span></label>
+        <label class="switch"><input type="checkbox" id="fastWholesale"><span>Solo productos con precio mayorista</span></label>
       </section>
 
       <section class="card raised pane hidden" id="pane-ferni_sku">

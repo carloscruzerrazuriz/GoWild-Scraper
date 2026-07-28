@@ -499,4 +499,20 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-loadStores(); loadOutputs(); updateRetailerRow();
+/* ── estado de conexión (esquina inferior) ── */
+function setEnv(ok) {
+  const row = $("#envRow");
+  if (!row) return;
+  row.classList.toggle("err", !ok);
+  row.querySelector(".dot").classList.toggle("bad", !ok);
+  row.querySelector(".envtxt").textContent = ok ? "Conectado" : "Error — recomendado reiniciar";
+}
+async function healthCheck() {
+  try {
+    const r = await fetch("/api/status", { cache: "no-store" });
+    setEnv(r.ok);
+  } catch (e) { setEnv(false); }
+}
+setInterval(healthCheck, 5000);
+
+loadStores(); loadOutputs(); updateRetailerRow(); healthCheck();

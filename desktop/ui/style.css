@@ -72,6 +72,8 @@ kbd{background:var(--panel2);border:1px solid var(--line2);border-bottom-width:2
 .themebtn:hover{border-color:var(--line2);color:var(--tx)}
 .envrow{display:flex;align-items:center;gap:8px;font-size:var(--t-xs);color:var(--dim)}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft);flex:0 0 auto}
+.dot.bad{background:var(--err);box-shadow:0 0 0 3px var(--err-soft)}
+.envrow.err .envtxt{color:var(--err)}
 
 /* ═══════════════ MAIN (2 columnas) ═══════════════ */
 .main{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 384px;gap:22px;
