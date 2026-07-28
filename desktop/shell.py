@@ -278,10 +278,15 @@ def main():
     # bundle, que se borra en cada ejecución → el navegador "desaparecía" y
     # ensure_chromium lo re-descargaba cada vez). Debe fijarse ANTES de
     # ensure_chromium. Sólo Windows; en Mac/Linux se deja el default.
-    if os.name == "nt":
-        _bdir = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / "Cruzer" / "browsers"
-        _bdir.mkdir(parents=True, exist_ok=True)
-        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(_bdir)
+    if sys.platform == "win32":
+        _bbase = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
+    elif sys.platform == "darwin":
+        _bbase = Path.home() / "Library" / "Caches"
+    else:
+        _bbase = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    _bdir = _bbase / "Cruzer" / "browsers"
+    _bdir.mkdir(parents=True, exist_ok=True)
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(_bdir)
 
     print("\n  Cruzer\n  " + "─" * 40, flush=True)
     root = update_code()

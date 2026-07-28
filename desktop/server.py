@@ -48,15 +48,22 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR = OUTPUT_DIR / "_uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# ── Navegador de Playwright en una carpeta PERSISTENTE ──────────────────────
-# En el .exe (PyInstaller onefile), Playwright por defecto busca/instala el
-# navegador dentro de la carpeta temporal _MEIxxxx del bundle, que se BORRA en
-# cada ejecución → "Executable doesn't exist" al abrir el navegador. Fijamos una
-# ruta estable (%LOCALAPPDATA%\Cruzer\browsers) para que se descargue UNA vez y
-# el runtime lo encuentre siempre. Se hace acá (código de GitHub) para no
-# recompilar el .exe. Sólo en Windows; en Mac/Linux se deja el default.
-if sys.platform == "win32":
-    _BROWSERS = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData/Local")) / "Cruzer" / "browsers"
+# ── Navegador de Playwright en una carpeta PERSISTENTE (TODAS las plataformas) ─
+# En el ejecutable empaquetado, el Playwright bundleado busca/instala el navegador
+# DENTRO del bundle (.local-browsers junto al driver, o el _MEIxxxx temporal en
+# Windows), que se borra o es de sólo-lectura → "Executable doesn't exist". Fijamos
+# una ruta estable por plataforma para que se descargue UNA vez y el runtime lo
+# encuentre siempre. Antes esto era SÓLO Windows → en Mac el .app fallaba al abrir
+# el navegador ('Cargar secciones'). Se hace acá (código de GitHub) para no
+# recompilar. shell.py fija lo mismo antes de importar este módulo (redundante y OK).
+if not os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
+    if sys.platform == "win32":
+        _bbase = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData/Local"))
+    elif sys.platform == "darwin":
+        _bbase = Path.home() / "Library" / "Caches"
+    else:
+        _bbase = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache"))
+    _BROWSERS = _bbase / "Cruzer" / "browsers"
     _BROWSERS.mkdir(parents=True, exist_ok=True)
     os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(_BROWSERS)
 
