@@ -296,6 +296,34 @@ def _splash_html():
     )
 
 
+def _screen_size():
+    """(ancho, alto) de la pantalla principal, o un fallback razonable."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            u = ctypes.windll.user32
+            return int(u.GetSystemMetrics(0)), int(u.GetSystemMetrics(1))
+        if sys.platform == "darwin":
+            from AppKit import NSScreen  # pyobjc (bundleado)
+            fr = NSScreen.mainScreen().frame()
+            return int(fr.size.width), int(fr.size.height)
+    except Exception:  # noqa: BLE001
+        pass
+    return 1440, 900
+
+
+def _window_geometry(pref_w=1240, pref_h=800):
+    """Tamaño estético (cap a `pref`, pero nunca > ~86% de la pantalla) y posición
+    CENTRADA. Sin esto pywebview abre en la posición 'cascada' por defecto (abajo a
+    la derecha). Devuelve (w, h, x, y)."""
+    sw, sh = _screen_size()
+    w = max(940, min(pref_w, int(sw * 0.86)))
+    h = max(620, min(pref_h, int(sh * 0.86)))
+    x = max(0, (sw - w) // 2)
+    y = max(0, (sh - h) // 2 - 24)   # un pelín sobre el centro exacto: se ve más natural
+    return w, h, x, y
+
+
 def main():
     # Guardia anti-bucle: si un subproceso relanzara el ejecutable (fue el bug de
     # la v1 con `sys.executable`), el hijo detecta la marca y se detiene en vez
@@ -369,8 +397,9 @@ def main():
     # vea algo de inmediato; el trabajo pesado corre en background y el mensaje se va
     # actualizando. Al terminar navega a la app. Cerrar la ventana = cerrar la app.
     if webview is not None:
+        _w, _h, _x, _y = _window_geometry()   # tamaño estético + CENTRADA
         win = webview.create_window("Cruzer", html=_splash_html(),
-                                    width=1280, height=860, min_size=(980, 640))
+                                    width=_w, height=_h, x=_x, y=_y, min_size=(940, 620))
 
         def _stage(msg):
             _log(msg)
