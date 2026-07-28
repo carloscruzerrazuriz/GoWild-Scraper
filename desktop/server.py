@@ -206,6 +206,21 @@ def _hide_console_win():
         pass
 
 
+def _hide_console_persistently():
+    """Windows: re-oculta la consola varias veces los primeros segundos. Hace falta
+    porque shell.py (horneado en el .exe) dispara un `minimize` ~0.4s después de
+    arrancar la ventana nativa, que RE-MOSTRABA la consola minimizada en la barra
+    de tareas. Con re-hides sucesivos el SW_HIDE termina ganando. No-op fuera de Win."""
+    if sys.platform != "win32":
+        return
+
+    def _loop():
+        for _ in range(12):        # ~6 s cubriendo el minimize tardío del shell
+            _hide_console_win()
+            time.sleep(0.5)
+    threading.Thread(target=_loop, daemon=True).start()
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -463,5 +478,5 @@ class Handler(BaseHTTPRequestHandler):
 def serve(port=8733):
     _ensure_browser()   # navegador en ruta persistente antes de aceptar pedidos
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    _hide_console_win()  # Windows: esconde la consola (la app es la ventana nativa)
+    _hide_console_persistently()  # Windows: esconde la consola (la app es la ventana nativa)
     return httpd
