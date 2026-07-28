@@ -24,3 +24,9 @@ dist/
 # Cache de runtime del árbol de secciones (Maestra)
 sections_cache_*.json
 *.xlsx
+
+# Runtime local (se regeneran solos; nunca van al repo)
+_pm_checkpoints/
+*_partial_runs/
+*_screenshots/
+cards_screenshots/

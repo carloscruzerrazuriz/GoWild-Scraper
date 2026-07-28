@@ -221,6 +221,28 @@ def _hide_console_persistently():
     threading.Thread(target=_loop, daemon=True).start()
 
 
+def _sweep_old_shots(ttl=7200):
+    """Barrido de seguridad: borra carpetas de screenshots (_shots/*) que quedaron
+    de scrapes cortados sin limpiar. El caso normal se limpia al terminar cada job;
+    esto cubre cortes/crashes para que no se acumulen en Documents/Cruzer."""
+    try:
+        base = OUTPUT_DIR / "_shots"
+        if not base.exists():
+            return
+        import shutil
+        now = time.time()
+        for d in base.iterdir():
+            try:
+                if now - d.stat().st_mtime > ttl:
+                    shutil.rmtree(d, ignore_errors=True)
+            except Exception:  # noqa: BLE001
+                pass
+        if not any(base.iterdir()):
+            base.rmdir()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -490,4 +512,5 @@ def serve(port=8733):
     _ensure_browser()   # navegador en ruta persistente antes de aceptar pedidos
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     _hide_console_persistently()  # Windows: esconde la consola (la app es la ventana nativa)
+    _sweep_old_shots()            # limpia screenshots huérfanos de scrapes cortados
     return httpd

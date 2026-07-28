@@ -63,6 +63,19 @@ def _shots_dir(outdir: Path, tag: str):
     return d
 
 
+def _cleanup_shots(shot_dir):
+    """Borra la carpeta temporal de screenshots del job tras escribir el Excel: las
+    imágenes YA quedaron embebidas en el .xlsx, no se necesitan más. Sin esto,
+    Documents/Cruzer/_shots crecería sin control con cada scrape que use fotos."""
+    if not shot_dir:
+        return
+    try:
+        import shutil
+        shutil.rmtree(shot_dir, ignore_errors=True)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent  # desktop/ → raíz del repo
 
 
@@ -223,6 +236,7 @@ async def run_mk7(params, emit, outdir: Path, tag: str = ""):
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(matches)} filas)…"})
     se.write_output(df, desc_col, sku_col, easy_col, matches, str(out), stores=stores)
     _post_maestra_async(matches, "MK7")  # consolidar en la Maestra Sodimac
+    _cleanup_shots(shots)
     return out
 
 
@@ -368,6 +382,7 @@ async def run_seccion(params, emit, outdir: Path, tag: str = ""):
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
     ms.write_excel(all_rows, str(out), with_images=shots)
     _post_maestra_async(all_rows, "Maestra")  # consolidar en la Maestra Sodimac
+    _cleanup_shots(shot_dir)
     return out
 
 
@@ -597,6 +612,7 @@ async def run_ferni_sku(params, emit, outdir: Path, tag: str = ""):
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(matches)} filas)…"})
     fs.write_output(df, desc_col, sku_col, easy_col, matches, str(out),
                     stores=stores, embed_images=shots)
+    _cleanup_shots(shot_dir)
     return out
 
 
@@ -651,6 +667,7 @@ async def run_ferni_seccion(params, emit, outdir: Path, tag: str = ""):
     out = outdir / _outname(f"Ferni_Seccion_{_safe(section_name)}", tag)
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(rows)} filas)…"})
     fm.write_excel(rows, str(out), with_images=shots)
+    _cleanup_shots(shot_dir)
     return out
 
 

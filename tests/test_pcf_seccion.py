@@ -11,7 +11,7 @@ Uso:  python3 test_pcf_seccion.py
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # raíz del repo
 
 from engines import pcf_seccion as eng  # noqa: E402
 
