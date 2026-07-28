@@ -334,13 +334,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
 
         if route == "/api/template":
-            # genera el 'formato de carga' al vuelo (mismo diseño que el Colab)
-            tool = (parse_qs(p.query).get("tool") or ["mk7"])[0]
+            # genera el 'formato de carga' al vuelo (mismo diseño que el Colab).
+            # ?open=1 → lo guarda en Documents/Cruzer y lo ABRE en Excel (la ventana
+            # nativa no descarga); si no, lo devuelve como descarga (fallback navegador).
+            q = parse_qs(p.query)
+            tool = (q.get("tool") or ["mk7"])[0]
             try:
                 from orchestrators import build_template_bytes
                 fname, data = build_template_bytes(tool)
             except Exception as e:  # noqa: BLE001
                 return self._json({"error": str(e)}, 500)
+            if (q.get("open") or ["0"])[0] == "1":
+                try:
+                    dest = OUTPUT_DIR / fname
+                    dest.write_bytes(data)
+                    _open_path(str(dest))
+                except Exception as e:  # noqa: BLE001
+                    return self._json({"error": str(e)}, 500)
+                return self._json({"ok": True, "path": str(dest)})
             return self._send(200, data,
                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                               {"Content-Disposition": f'attachment; filename="{fname}"'})

@@ -455,6 +455,14 @@ async function openFile(path) {
 async function revealFile(path) {
   await fetch("/api/reveal?f=" + encodeURIComponent(path)).catch(() => {});
 }
+
+/* Formato de carga: se genera, se guarda en Documents/Cruzer y se ABRE en Excel
+   (la ventana nativa no descarga desde el navegador). */
+async function getTemplate(tool) {
+  const r = await fetch("/api/template?tool=" + encodeURIComponent(tool) + "&open=1");
+  if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || "No se pudo abrir el formato de carga."); }
+}
+$$(".minilink[data-tpl]").forEach(a => a.onclick = (e) => { e.preventDefault(); getTemplate(a.dataset.tpl); });
 async function renameOutput(path, current, btn) {
   const name = prompt("Nuevo nombre del archivo:", current);
   if (name === null) return;
