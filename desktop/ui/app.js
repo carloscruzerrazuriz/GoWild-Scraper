@@ -392,7 +392,9 @@ function streamJob(jobId, card) {
       jobAlert(card, ev.msg, "e"); showJobResult(card, ev.msg, true); card.dataset.err = "1";
     } else if (ev.type === "done") {
       card.querySelectorAll(".fill").forEach(f => { f.style.width = "100%"; f.classList.add("ok"); });
-      showJobResult(card, `Listo — <a href="/api/download?f=${encodeURIComponent(ev.path)}">${ev.file}</a>`);
+      showJobResult(card, `Listo — <a href="#" class="op" data-path="${encodeURIComponent(ev.path)}" title="Abrir en Excel">${ev.file}</a>`);
+      const lk = card.querySelector(".result .op");
+      if (lk) lk.onclick = (e) => { e.preventDefault(); openFile(decodeURIComponent(lk.dataset.path)); };
       loadOutputs();
     } else if (ev.type === "eof") {
       es.close(); endJob(card, timer);
@@ -431,14 +433,27 @@ async function loadOutputs() {
   }
   $("#outputs").innerHTML = files.map(f => `<div class="file">
     <span class="fic">▦</span>
-    <span class="fmeta"><a href="/api/download?f=${encodeURIComponent(f.path)}">${f.name}</a><small>${fmtDate(f.mtime)}</small></span>
+    <span class="fmeta"><a class="op" href="#" data-path="${encodeURIComponent(f.path)}" title="Abrir en Excel">${f.name}</a><small>${fmtDate(f.mtime)}</small></span>
     <span class="fsize">${(f.size / 1048576).toFixed(1)} MB</span>
+    <button class="iconbtn rev" data-path="${encodeURIComponent(f.path)}" title="Mostrar en la carpeta">📁</button>
     <button class="iconbtn ren" data-path="${encodeURIComponent(f.path)}" data-name="${encodeURIComponent(f.name)}" title="Cambiar nombre">✎</button>
     <button class="iconbtn del" data-path="${encodeURIComponent(f.path)}" title="Borrar">✕</button>
   </div>`).join("");
+  $$("#outputs .op").forEach(a => a.onclick = (e) => { e.preventDefault(); openFile(decodeURIComponent(a.dataset.path)); });
+  $$("#outputs .rev").forEach(b => b.onclick = () => revealFile(decodeURIComponent(b.dataset.path)));
   $$("#outputs .del").forEach(b => b.onclick = () => deleteOutput(decodeURIComponent(b.dataset.path), b));
   $$("#outputs .ren").forEach(b => b.onclick = () =>
     renameOutput(decodeURIComponent(b.dataset.path), decodeURIComponent(b.dataset.name), b));
+}
+
+/* Abrir el Excel / mostrar la carpeta LOCALMENTE (los archivos ya están en el disco;
+   en la ventana nativa los "downloads" del navegador no funcionan). */
+async function openFile(path) {
+  const r = await fetch("/api/open?f=" + encodeURIComponent(path));
+  if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || "No se pudo abrir el archivo."); }
+}
+async function revealFile(path) {
+  await fetch("/api/reveal?f=" + encodeURIComponent(path)).catch(() => {});
 }
 async function renameOutput(path, current, btn) {
   const name = prompt("Nuevo nombre del archivo:", current);

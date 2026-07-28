@@ -176,6 +176,36 @@ def _run_job(job_id, tool, params):
         emit({"type": "eof"})
 
 
+def _open_path(path, *, reveal=False):
+    """Abre `path` con la app por defecto (Excel), o MUESTRA la carpeta (reveal)."""
+    import subprocess
+    if sys.platform == "win32":
+        if reveal:
+            subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
+        else:
+            os.startfile(path)  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open"] + (["-R"] if reveal else []) + [path])
+    else:
+        target = os.path.dirname(path) if reveal else path
+        subprocess.Popen(["xdg-open", target])
+
+
+def _hide_console_win():
+    """Windows: OCULTA la ventana de consola de la barra de tareas (SW_HIDE). Con la
+    ventana nativa (pywebview) la consola es redundante y molesta. Se hace en runtime
+    (código de GitHub) → no requiere recompilar el .exe. En Mac/Linux es no-op."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE = 0
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -272,6 +302,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, data,
                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                               {"Content-Disposition": f'attachment; filename="{path.name}"'})
+
+        if route in ("/api/open", "/api/reveal"):
+            # La app corre LOCAL → los Excel ya están en el disco del usuario. En la
+            # ventana nativa (pywebview) los "downloads" del navegador no funcionan;
+            # acá se ABRE el archivo con su app (Excel) o se MUESTRA la carpeta.
+            q = parse_qs(p.query)
+            f = unquote((q.get("f") or [""])[0])
+            path = Path(f)
+            if not path.is_file() or OUTPUT_DIR not in path.resolve().parents:
+                return self._json({"error": "archivo no encontrado"}, 404)
+            try:
+                _open_path(str(path), reveal=(route == "/api/reveal"))
+            except Exception as e:  # noqa: BLE001
+                return self._json({"error": str(e)}, 500)
+            return self._json({"ok": True})
 
         if route == "/api/template":
             # genera el 'formato de carga' al vuelo (mismo diseño que el Colab)
@@ -418,4 +463,5 @@ class Handler(BaseHTTPRequestHandler):
 def serve(port=8733):
     _ensure_browser()   # navegador en ruta persistente antes de aceptar pedidos
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    _hide_console_win()  # Windows: esconde la consola (la app es la ventana nativa)
     return httpd
