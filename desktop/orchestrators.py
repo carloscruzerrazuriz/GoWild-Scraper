@@ -620,11 +620,10 @@ async def run_ferni_sku(params, emit, outdir: Path, tag: str = ""):
     found_skus = {str(m.get("sku_input", "")) for m in matches}
     not_found = [s for s in skus if s not in found_skus]
     if not_found:
-        preview = ", ".join(not_found[:15]) + ("…" if len(not_found) > 15 else "")
         emit({"type": "warn",
               "msg": (f"{len(found_skus)} de {len(skus)} SKUs encontrados. "
                       f"{len(not_found)} no están en el catálogo actual de Sodimac "
-                      f"(descontinuados o sin stock): {preview}")})
+                      f"(descontinuados o sin stock).")})
 
     out = outdir / _outname("Ferni_SKU", tag)
     emit({"type": "count", "rows": len(matches)})
