@@ -201,7 +201,16 @@ $("#fastLoadSections").onclick = async (e) => {
   if (!tree) return;
   $("#fastSections").innerHTML = tree.map(s =>
     `<label><input type="checkbox" class="fsec" value="${s.section}" checked> ${s.section}</label>`).join("");
+  $$(".fsec").forEach(c => c.onchange = countFsecs);
+  $("#fastSecHead").classList.remove("hidden");
+  countFsecs();
 };
+function countFsecs() {
+  $("#fastSecCount").textContent = `${$$(".fsec:checked").length} secciones`;
+}
+$$("[data-fsec]").forEach(b => b.onclick = () => {
+  $$(".fsec").forEach(c => c.checked = b.dataset.fsec === "all"); countFsecs();
+});
 
 /* ── construir params ── */
 function buildParams() {
