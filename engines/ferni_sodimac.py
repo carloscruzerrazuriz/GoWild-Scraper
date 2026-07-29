@@ -59,6 +59,14 @@ DEFAULT_GUARD_SKUS = ["110038221", "130607328", "110229015", "110096085"]
 # 4 guards = 20 entra cómodo en una PLP (page size ~24).
 DEFAULT_BATCH_SIZE = 16
 
+# Fallback de catálogo: el buscador /buscar de Sodimac tiene un índice INCOMPLETO
+# (no devuelve todos los SKUs del catálogo), mientras que el listado de categoría
+# sí los trae. Cuando un SKU no aparece en la búsqueda, recorremos el listado
+# maestro de Puertas y lo matcheamos ahí (mismo extractor, misma zona → precio
+# correcto). Recupera SKUs válidos que el buscador se salta.
+PUERTAS_CATALOG_URL = f"{BASE_URL}/lista/CATG10743/puertas"
+MAX_FALLBACK_PAGES = 12
+
 ALL_STORES = [
     {"id": "E534", "name": "Antofagasta",   "region": "Antofagasta",   "comuna": "Antofagasta"},
     {"id": "E619", "name": "Arica",         "region": "Arica",         "comuna": "Arica"},
@@ -250,6 +258,48 @@ _CARD_PID_JS = r"""(card) => {
 }"""
 
 
+async def scan_catalog_doors(
+    page: Page,
+    wanted: list[str],
+    *,
+    catalog_url: str = PUERTAS_CATALOG_URL,
+    max_pages: int = MAX_FALLBACK_PAGES,
+) -> dict:
+    """Fallback: recorre el listado de categoría Puertas (paginado) y matchea los
+    SKUs que el buscador NO devolvió. Devuelve {sku: data} con la misma forma que
+    search_batch_doors, para que write_output los procese sin cambios.
+
+    La zona debe estar fijada en `page` antes de llamar (los precios son de esa
+    zona). Se detiene apenas encuentra todos los SKUs pedidos o agota las páginas.
+
+    Devuelve (found, reached): `reached` indica si el listado se pudo cargar
+    (para no marcar SKUs como ausentes por una falla de red).
+    """
+    remaining = list(dict.fromkeys(str(s) for s in wanted))
+    if not remaining:
+        return {}, True
+    found: dict = {}
+    reached = False
+    for page_i in range(1, max_pages + 1):
+        sep = "&" if "?" in catalog_url else "?"
+        url = f"{catalog_url}{sep}page={page_i}"
+        results = await _fetch_results_json(page, url)
+        if not results:
+            break
+        reached = True
+        try:
+            payload = await page.evaluate(_EXTRACT_DOORS_JS, remaining)
+        except Exception:
+            payload = None
+        for sku, data in ((payload or {}).get("matches") or {}).items():
+            if sku not in found:
+                found[sku] = data
+        remaining = [s for s in remaining if s not in found]
+        if not remaining:
+            break
+    return found, reached
+
+
 async def search_batch_doors(
     page: Page,
     guards: list[str],
@@ -373,6 +423,9 @@ async def search_doors(
     skip_store_ids = set(skip_store_ids or ())
     n_skus = len(skus)
     n_batches_per_zone = max(1, (n_skus + batch_size - 1) // batch_size)
+    # SKUs que ni el buscador ni el listado de categoría devolvieron en la 1ª zona
+    # ⇒ están fuera del catálogo: no reintentamos el fallback en zonas siguientes.
+    catalog_absent: set[str] = set()
 
     async def _run_zone(browser, store, *, retried: bool) -> bool:
         ctx = await browser.new_context(
@@ -400,6 +453,16 @@ async def search_doors(
 
             zone_shots = (Path(screenshot_dir) / store["id"]) if screenshot_dir else None
             found_in_zone = 0
+            matched_here: set[str] = set()
+
+            def _record(sku, data):
+                nonlocal found_in_zone
+                _row = dict(data, store_found=store["name"], store_id=store["id"])
+                matches_all.append(_row)
+                matched_here.add(sku)
+                if on_match: on_match(_row)
+                found_in_zone += 1
+
             for i in range(0, n_skus, batch_size):
                 chunk = skus[i:i + batch_size]
                 try:
@@ -410,21 +473,36 @@ async def search_doors(
                 found_here = 0
                 for sku in chunk:
                     if sku in batch_matches:
-                        _row = dict(
-                            batch_matches[sku],
-                            store_found=store["name"],
-                            store_id=store["id"],
-                        )
-                        matches_all.append(_row)
-                        if on_match: on_match(_row)
+                        _record(sku, batch_matches[sku])
                         found_here += 1
-                found_in_zone += found_here
                 if progress_cb:
                     progress_cb({"event": "batch_done", "store": store,
                                  "batch_skus": chunk,
                                  "found_in_batch": found_here,
                                  "batches_done_in_zone": (i // batch_size) + 1,
                                  "total_batches_in_zone": n_batches_per_zone})
+
+            # Fallback: SKUs que el buscador no devolvió pero pueden estar en el
+            # listado de categoría (índice de /buscar incompleto). Se omiten los
+            # que ya probamos ausentes del catálogo en una zona previa.
+            unmatched = [s for s in skus
+                         if s not in matched_here and s not in catalog_absent]
+            if unmatched:
+                if progress_cb:
+                    progress_cb({"event": "fallback_start", "store": store,
+                                 "n_skus": len(unmatched)})
+                try:
+                    recovered, reached = await scan_catalog_doors(page, unmatched)
+                except Exception:
+                    recovered, reached = {}, False
+                for sku in unmatched:
+                    if sku in recovered:
+                        _record(sku, recovered[sku])
+                    elif reached:
+                        catalog_absent.add(sku)
+                if progress_cb:
+                    progress_cb({"event": "fallback_done", "store": store,
+                                 "recovered": len(recovered)})
 
             if progress_cb:
                 progress_cb({"event": "zone_end", "store": store,
@@ -596,6 +674,9 @@ def write_output(df, desc_col, sku_col, easy_col, matches, output_path, *,
             base.update(EMPTY)
             if m:
                 base.update({k: m.get(k, "") for k in EMPTY})
+            else:
+                # Sin match en esta tienda: marca explícita para el usuario.
+                base["descripcion"] = "No encontrado"
             rows.append(base)
 
     from . import _locales_easy as _loc

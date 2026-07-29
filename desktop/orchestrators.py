@@ -578,6 +578,14 @@ def _zone_progress(emit, total_zones, state):
             # rato (solo emitían progreso, nunca 'count') → parecía que no capturaba.
             state["rows"] = state.get("rows", 0) + ev.get("found_in_batch", 0)
             emit({"type": "count", "rows": state["rows"]})
+        elif e == "fallback_start":
+            emit({"type": "progress", "phase": "lote",
+                  "done": 0, "total": 1,
+                  "msg": f"{ev['store']['name']} · buscando {ev.get('n_skus', 0)} "
+                         f"SKU(s) en el catálogo…"})
+        elif e == "fallback_done" and ev.get("recovered"):
+            state["rows"] = state.get("rows", 0) + ev.get("recovered", 0)
+            emit({"type": "count", "rows": state["rows"]})
         elif e == "zone_end" and ev.get("zone_failed"):
             emit({"type": "warn", "msg": f"No se pudo fijar zona en {ev['store']['name']}"})
     return cb
@@ -606,6 +614,17 @@ async def run_ferni_sku(params, emit, outdir: Path, tag: str = ""):
         progress_cb=_zone_progress(emit, len(stores), {"zone": 0}))
     if not matches:
         raise RuntimeError("No se encontró ninguna puerta en las tiendas seleccionadas.")
+
+    # Reporte transparente: qué SKUs no aparecieron en ninguna tienda (ni en la
+    # búsqueda ni en el listado de categoría) → no están en el catálogo actual.
+    found_skus = {str(m.get("sku_input", "")) for m in matches}
+    not_found = [s for s in skus if s not in found_skus]
+    if not_found:
+        preview = ", ".join(not_found[:15]) + ("…" if len(not_found) > 15 else "")
+        emit({"type": "warn",
+              "msg": (f"{len(found_skus)} de {len(skus)} SKUs encontrados. "
+                      f"{len(not_found)} no están en el catálogo actual de Sodimac "
+                      f"(descontinuados o sin stock): {preview}")})
 
     out = outdir / _outname("Ferni_SKU", tag)
     emit({"type": "count", "rows": len(matches)})
