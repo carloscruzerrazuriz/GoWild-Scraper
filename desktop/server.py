@@ -395,9 +395,19 @@ class Handler(BaseHTTPRequestHandler):
                 _ckpts.purge_expired(CHECKPOINT_DIR)
                 tool = (parse_qs(p.query).get("tool") or [""])[0]
                 runs = _ckpts.list_runs(CHECKPOINT_DIR, unfinished_only=True)
+                
+                active_run_ids = set()
+                for j in JOBS.values():
+                    if j.get("running"):
+                        rid = j.get("params", {}).get("resume_run_id")
+                        if rid:
+                            active_run_ids.add(rid)
+
                 out = []
                 for rid, meta, rows, done in runs:
                     if tool and meta.get("tool") != tool:
+                        continue
+                    if rid in active_run_ids:
                         continue
                     out.append({
                         "run_id": rid,

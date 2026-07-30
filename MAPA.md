@@ -36,7 +36,7 @@ Cada archivo arma la UI de una herramienta en el notebook y llama a su motor:
 |---|---|
 | `shell.py` | El arranque (esto se empaqueta en el `.exe`/`.app`): baja el código de GitHub, muestra el splash, abre la ventana. |
 | `server.py` | El servidor local (sirve la UI + los endpoints). |
-| `orchestrators.py` | El "puente": conecta la UI con los motores de `engines/`. |
+| `orchestrators.py` | El "puente": conecta la UI con los motores de `engines/`. Incluye la lógica de checkpoints para pausar y reanudar cualquier herramienta sin perder progreso. |
 | `ui/` | La interfaz web (HTML/CSS/JS) que ves en la ventana. |
 | `build/` | Las recetas para compilar (`cruzer.spec` Windows, `cruzer-mac.spec` Mac, íconos). |
 | `dev.py` | Arranque de desarrollo (sin bajar de GitHub). |

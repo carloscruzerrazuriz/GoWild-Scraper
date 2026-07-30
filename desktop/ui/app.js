@@ -541,7 +541,7 @@ async function loadCheckpoints() {
           </div>
         </div>
         <div style="display: flex; gap: 8px;">
-          <button class="btn info" onclick="resumeCheckpoint('${r.run_id}')" style="padding: 4px 10px; font-size: 0.85rem;">Continuar</button>
+          <button class="btn info" onclick="resumeCheckpoint('${r.run_id}', this)" style="padding: 4px 10px; font-size: 0.85rem;">Continuar</button>
           <button class="btn" onclick="deleteCheckpoint('${r.run_id}')" style="padding: 4px 10px; font-size: 0.85rem; background: #fee2e2; color: #b91c1c; border-color: #fca5a5;">Descartar</button>
         </div>
       </div>`;
@@ -550,7 +550,11 @@ async function loadCheckpoints() {
     console.error("Error cargando checkpoints:", e);
   }
 }
-async function resumeCheckpoint(run_id) {
+async function resumeCheckpoint(run_id, btn) {
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Iniciando…";
+  }
   await startJob(run_id);
   loadCheckpoints();
 }
