@@ -26,6 +26,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from engines import _checkpoints as _ckpts
+
 # Paralelismo local de Fast. Se bajó de 12→8: con 12 (y peor si corría junto a
 # otros jobs Sodimac) Cloudflare empezaba a devolver challenges y se acumulaban
 # tandas de "error de red persistente" (categorías incompletas). 8 es el número
@@ -191,6 +193,8 @@ async def _run_mk7_generic(params, emit, outdir, tag, mod, out_base, label):
 
     run_id = params.get("resume_run_id")
     prior_rows, prior_done = [], set()
+    CHECKPOINT_DIR = outdir / "_checkpoints"
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if run_id:
         emit({"type": "info", "msg": "Reanudando proceso anterior…"})
         prior_rows, prior_done = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
@@ -255,6 +259,8 @@ async def run_mk7(params, emit, outdir: Path, tag: str = ""):
     
     run_id = params.get("resume_run_id")
     prior_rows, prior_done = [], set()
+    CHECKPOINT_DIR = outdir / "_checkpoints"
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if run_id:
         emit({"type": "info", "msg": "Reanudando proceso anterior…"})
         prior_rows, prior_done = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
@@ -387,10 +393,9 @@ async def run_seccion(params, emit, outdir: Path, tag: str = ""):
     stores = [s for s in ms.ALL_STORES if s["id"] in set(params.get("store_ids", []))]
     subcats = [(s["name"], s["url"]) for s in params.get("subcats", [])]
     section_name = params.get("section") or "Sección"
-    only_sod = not params.get("include_non_sodimac")
+    only_sod = params.get("include_non_sodimac", False) is False
     shots = params.get("screenshots", False)
 
-    from engines import _checkpoints as _ckpts
     CHECKPOINT_DIR = outdir / "_checkpoints"
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     
@@ -507,6 +512,8 @@ async def _run_seccion_falabella(params, emit, outdir, tag=""):
     
     run_id = params.get("resume_run_id")
     prior_rows, prior_done = [], set()
+    CHECKPOINT_DIR = outdir / "_checkpoints"
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if run_id:
         emit({"type": "info", "msg": "Reanudando proceso anterior…"})
         prior_rows, prior_done = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
@@ -585,6 +592,8 @@ async def _run_seccion_construmart(params, emit, outdir, tag=""):
     
     run_id = params.get("resume_run_id")
     prior_rows, prior_done = [], set()
+    CHECKPOINT_DIR = outdir / "_checkpoints"
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if run_id:
         emit({"type": "info", "msg": "Reanudando proceso anterior…"})
         prior_rows, prior_done = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
@@ -659,6 +668,8 @@ async def run_fast(params, emit, outdir: Path, tag: str = ""):
 
     run_id = params.get("resume_run_id")
     prior_rows, prior_done = [], set()
+    CHECKPOINT_DIR = outdir / "_checkpoints"
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if run_id:
         emit({"type": "info", "msg": "Reanudando proceso anterior…"})
         prior_rows, prior_done = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
@@ -792,6 +803,8 @@ async def run_ferni_sku(params, emit, outdir: Path, tag: str = ""):
 
     run_id = params.get("resume_run_id")
     prior_rows, prior_done = [], set()
+    CHECKPOINT_DIR = outdir / "_checkpoints"
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if run_id:
         emit({"type": "info", "msg": "Reanudando proceso anterior…"})
         prior_rows, prior_done = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
@@ -866,6 +879,8 @@ async def run_ferni_seccion(params, emit, outdir: Path, tag: str = ""):
 
     run_id = params.get("resume_run_id")
     prior_rows, prior_done = [], set()
+    CHECKPOINT_DIR = outdir / "_checkpoints"
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if run_id:
         emit({"type": "info", "msg": "Reanudando proceso anterior…"})
         prior_rows, prior_done = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
