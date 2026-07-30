@@ -42,6 +42,7 @@ $$(".tool").forEach(b => b.onclick = () => {
   $$(".pane").forEach(p => p.classList.add("hidden"));
   $(`#pane-${state.tool}`).classList.remove("hidden");
   updateRetailerRow();
+  loadCheckpoints();
 });
 
 /* ── tiendas (chips + búsqueda + colapso) ── */
@@ -318,10 +319,14 @@ function updateRunBtn() {
 }
 function afterRemove() { if (!$("#jobs").children.length) $("#jobsEmpty").classList.remove("hidden"); }
 
-async function startJob() {
+async function startJob(resume_run_id = null) {
   if (activeJobs >= MAX_JOBS) return;
-  let params;
-  try { params = buildParams(); } catch (e) { showGlobalError(e.message); return; }
+  let params = {};
+  if (resume_run_id) {
+    params = { resume_run_id };
+  } else {
+    try { params = buildParams(); } catch (e) { showGlobalError(e.message); return; }
+  }
   const tool = state.tool;
   const toolLabel = document.querySelector(`.tool[data-tool="${tool}"] .tt b`).textContent;
 
@@ -425,8 +430,9 @@ function endJob(card, timer) {
   else if (card.dataset.err) setStatus(card, "err", "Error");
   else if (card.querySelector(".alert.w")) setStatus(card, "warn", "Con avisos");
   else setStatus(card, "done", "Listo");
+  loadCheckpoints();
 }
-$("#runBtn").onclick = startJob;
+$("#runBtn").onclick = () => startJob();
 
 /* ── archivos generados ── */
 function fmtDate(ms) {
@@ -500,6 +506,56 @@ async function deleteOutput(path, btn) {
   alert(j.error || "No se pudo borrar el archivo.");
 }
 
+/* ── Checkpoints ── */
+async function loadCheckpoints() {
+  try {
+    const res = await fetch("/api/checkpoints?tool=" + encodeURIComponent(state.tool));
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const runs = await res.json();
+    const wrap = $("#checkpointsWrap");
+    const list = $("#checkpointsList");
+    if (!runs || !runs.length) {
+      wrap.classList.add("hidden");
+      list.innerHTML = "";
+      return;
+    }
+    wrap.classList.remove("hidden");
+    list.innerHTML = runs.map(r => {
+      const title = r.meta.section_name || "Desconocido";
+      const stores = r.meta.store_ids ? r.meta.store_ids.length : 0;
+      const subcats = r.meta.subcats ? r.meta.subcats.length : 0;
+      return `<div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <div style="font-weight: bold; margin-bottom: 2px;">${title}</div>
+          <div style="font-size: 0.85em; color: #475569;">
+            ${stores} tienda(s) · ${subcats} subcat(s) · ${r.rows_count} filas recuperadas · hace ${r.age_min} min
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn info" onclick="resumeCheckpoint('${r.run_id}')" style="padding: 4px 10px; font-size: 0.85rem;">Continuar</button>
+          <button class="btn" onclick="deleteCheckpoint('${r.run_id}')" style="padding: 4px 10px; font-size: 0.85rem; background: #fee2e2; color: #b91c1c; border-color: #fca5a5;">Descartar</button>
+        </div>
+      </div>`;
+    }).join("");
+  } catch (e) {
+    console.error("Error cargando checkpoints:", e);
+  }
+}
+async function resumeCheckpoint(run_id) {
+  await startJob(run_id);
+  loadCheckpoints();
+}
+async function deleteCheckpoint(run_id) {
+  if (!confirm("¿Descartar este proceso incompleto?")) return;
+  const r = await fetch("/api/checkpoints/delete", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ run_id })
+  });
+  if (r.ok) loadCheckpoints();
+  else alert("No se pudo borrar el checkpoint.");
+}
+$("#refreshCheckpoints").onclick = loadCheckpoints;
+
 /* ── atajos de teclado ── */
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); startJob(); }
@@ -524,4 +580,4 @@ async function healthCheck() {
 }
 setInterval(healthCheck, 5000);
 
-loadStores(); loadOutputs(); updateRetailerRow(); healthCheck();
+loadStores(); loadOutputs(); updateRetailerRow(); healthCheck(); loadCheckpoints();

@@ -47,6 +47,8 @@ OUTPUT_DIR = Path.home() / "Documents" / "Cruzer"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR = OUTPUT_DIR / "_uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+CHECKPOINT_DIR = OUTPUT_DIR / "_checkpoints"
+CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Navegador de Playwright en una carpeta PERSISTENTE (TODAS las plataformas) ─
 # En el ejecutable empaquetado, el Playwright bundleado busca/instala el navegador
@@ -387,6 +389,27 @@ class Handler(BaseHTTPRequestHandler):
                             "mtime": int(st.st_mtime * 1000)})  # epoch ms
             return self._json(out)
 
+        if route == "/api/checkpoints":
+            try:
+                from engines import _checkpoints as _ckpts
+                _ckpts.purge_expired(CHECKPOINT_DIR)
+                tool = (parse_qs(p.query).get("tool") or [""])[0]
+                runs = _ckpts.list_runs(CHECKPOINT_DIR, unfinished_only=True)
+                out = []
+                for rid, meta, rows, done in runs:
+                    if tool and meta.get("tool") != tool:
+                        continue
+                    out.append({
+                        "run_id": rid,
+                        "meta": meta,
+                        "rows_count": len(rows),
+                        "done_count": len(done),
+                        "age_min": int((time.time() - _ckpts.meta_path(CHECKPOINT_DIR, rid).stat().st_mtime) / 60)
+                    })
+                return self._json(out)
+            except Exception as e:
+                return self._json({"error": str(e)}, 500)
+
         return self._json({"error": "not found"}, 404)
 
     def _file(self, path: Path):
@@ -472,6 +495,15 @@ class Handler(BaseHTTPRequestHandler):
             loop, task = j.get("loop"), j.get("task")
             if loop is not None and task is not None:
                 loop.call_soon_threadsafe(task.cancel)  # cancela en el hilo del job
+            return self._json({"ok": True})
+
+        if p.path == "/api/checkpoints/delete":
+            payload = json.loads(self._body() or b"{}")
+            run_id = payload.get("run_id")
+            if not run_id:
+                return self._json({"error": "faltan parámetros"}, 400)
+            from engines import _checkpoints as _ckpts
+            _ckpts.cleanup_run(CHECKPOINT_DIR, run_id)
             return self._json({"ok": True})
 
         if p.path == "/api/run":
