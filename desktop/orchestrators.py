@@ -197,13 +197,14 @@ async def _run_mk7_generic(params, emit, outdir, tag, mod, out_base, label):
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if run_id:
         emit({"type": "info", "msg": "Reanudando proceso anterior…"})
-        prior_rows, prior_done = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
+        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
+        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
+        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
     else:
-        run_id = _ckpts.create_run_id()
-        _ckpts.write_meta(CHECKPOINT_DIR, run_id, {
+        run_id = f"{out_base}_{_ts()}"
+        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
             "tool": "mk7", "section_name": out_base, "store_ids": params["store_ids"]
         })
-        _ckpts.ensure_jsonl(CHECKPOINT_DIR, run_id)
 
     all_rows = list(prior_rows)
     def _on_row(r):
@@ -263,13 +264,14 @@ async def run_mk7(params, emit, outdir: Path, tag: str = ""):
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if run_id:
         emit({"type": "info", "msg": "Reanudando proceso anterior…"})
-        prior_rows, prior_done = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
+        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
+        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
+        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
     else:
-        run_id = _ckpts.create_run_id()
-        _ckpts.write_meta(CHECKPOINT_DIR, run_id, {
+        run_id = f"MK7_{_ts()}"
+        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
             "tool": "mk7", "section_name": "MK7_Sodimac", "store_ids": params["store_ids"]
         })
-        _ckpts.ensure_jsonl(CHECKPOINT_DIR, run_id)
 
     all_rows = list(prior_rows)
     def _on_match(m):
@@ -516,14 +518,15 @@ async def _run_seccion_falabella(params, emit, outdir, tag=""):
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if run_id:
         emit({"type": "info", "msg": "Reanudando proceso anterior…"})
-        prior_rows, prior_done = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
+        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
+        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
+        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
     else:
-        run_id = _ckpts.create_run_id()
-        _ckpts.write_meta(CHECKPOINT_DIR, run_id, {
+        run_id = f"Falabella_{_safe(section_name)}_{_ts()}"
+        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
             "tool": "seccion", "section_name": section_name,
             "subcats": [s[0] for s in subcats], "store_ids": params["store_ids"]
         })
-        _ckpts.ensure_jsonl(CHECKPOINT_DIR, run_id)
 
     all_rows = list(prior_rows)
     prog = _NullProg()
@@ -596,14 +599,15 @@ async def _run_seccion_construmart(params, emit, outdir, tag=""):
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if run_id:
         emit({"type": "info", "msg": "Reanudando proceso anterior…"})
-        prior_rows, prior_done = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
+        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
+        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
+        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
     else:
-        run_id = _ckpts.create_run_id()
-        _ckpts.write_meta(CHECKPOINT_DIR, run_id, {
+        run_id = f"Construmart_{_safe(section_name)}_{_ts()}"
+        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
             "tool": "seccion", "section_name": section_name,
             "subcats": [s[0] for s in subcats], "store_ids": params["store_ids"]
         })
-        _ckpts.ensure_jsonl(CHECKPOINT_DIR, run_id)
 
     all_rows = list(prior_rows)
     prog = _NullProg()
@@ -672,14 +676,15 @@ async def run_fast(params, emit, outdir: Path, tag: str = ""):
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if run_id:
         emit({"type": "info", "msg": "Reanudando proceso anterior…"})
-        prior_rows, prior_done = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
+        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
+        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
+        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
     else:
-        run_id = _ckpts.create_run_id()
-        _ckpts.write_meta(CHECKPOINT_DIR, run_id, {
+        run_id = f"Fast_{_ts()}"
+        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
             "tool": "fast", "store_ids": params["store_ids"],
             "url": url_scope, "sections": sections
         })
-        _ckpts.ensure_jsonl(CHECKPOINT_DIR, run_id)
 
     all_rows = list(prior_rows)
     report = []
@@ -807,13 +812,14 @@ async def run_ferni_sku(params, emit, outdir: Path, tag: str = ""):
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if run_id:
         emit({"type": "info", "msg": "Reanudando proceso anterior…"})
-        prior_rows, prior_done = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
+        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
+        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
+        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
     else:
-        run_id = _ckpts.create_run_id()
-        _ckpts.write_meta(CHECKPOINT_DIR, run_id, {
+        run_id = f"Ferni_SKU_{_ts()}"
+        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
             "tool": "ferni_sku", "store_ids": params["store_ids"]
         })
-        _ckpts.ensure_jsonl(CHECKPOINT_DIR, run_id)
 
     all_rows = list(prior_rows)
     def _on_match_ferni_sku(m):
@@ -883,13 +889,14 @@ async def run_ferni_seccion(params, emit, outdir: Path, tag: str = ""):
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if run_id:
         emit({"type": "info", "msg": "Reanudando proceso anterior…"})
-        prior_rows, prior_done = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
+        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
+        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
+        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
     else:
-        run_id = _ckpts.create_run_id()
-        _ckpts.write_meta(CHECKPOINT_DIR, run_id, {
+        run_id = f"Ferni_{_safe(section_name)}_{_ts()}"
+        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
             "tool": "ferni_seccion", "section_name": section_name, "store_ids": params["store_ids"]
         })
-        _ckpts.ensure_jsonl(CHECKPOINT_DIR, run_id)
 
     all_rows = list(prior_rows)
     def _on_row_ferni_seccion(r):
