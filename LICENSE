@@ -10,7 +10,8 @@ PERMITTED USES
   - Use of the Software is permitted ONLY by individuals who have received
     explicit written authorization from the copyright holder.
   - Authorized users may execute the Software for its intended purpose
-    (price/catalog scraping) within their own Google Colab session.
+    (price/catalog scraping) within Google Colab sessions or local desktop 
+    environments (Cruzer app).
 
 PROHIBITED USES (without prior written consent of the copyright holder)
   - Redistribution of the Software, in whole or in part, in any form.
