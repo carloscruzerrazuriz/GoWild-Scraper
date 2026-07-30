@@ -411,10 +411,15 @@ function streamJob(jobId, card) {
       if (lk) lk.onclick = (e) => { e.preventDefault(); openFile(decodeURIComponent(lk.dataset.path)); };
       loadOutputs();
     } else if (ev.type === "eof") {
+      card.dataset.eof = "1";
       es.close(); endJob(card, timer);
     }
   };
-  es.onerror = () => { es.close(); endJob(card, timer); };
+  es.onerror = () => { 
+    if (!card.dataset.eof) card.dataset.disconnected = "1";
+    es.close(); 
+    endJob(card, timer); 
+  };
 }
 
 function endJob(card, timer) {
@@ -428,6 +433,10 @@ function endJob(card, timer) {
   card.dataset.done = "1";
   if (card.dataset.cancelled) setStatus(card, "warn", "Cancelado");
   else if (card.dataset.err) setStatus(card, "err", "Error");
+  else if (card.dataset.disconnected) {
+    setStatus(card, "err", "Desconectado");
+    jobAlert(card, "Se perdió la conexión con el motor local. Puedes reanudar este proceso desde la sección de Checkpoints.", "w");
+  }
   else if (card.querySelector(".alert.w")) setStatus(card, "warn", "Con avisos");
   else setStatus(card, "done", "Listo");
   loadCheckpoints();
