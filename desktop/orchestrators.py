@@ -320,51 +320,19 @@ async def run_seccion(params, emit, outdir: Path, tag: str = ""):
     from playwright_stealth import Stealth
     from engines import maestra_sodimac as ms
 
-    stores = [s for s in ms.ALL_STORES if s["id"] in set(params.get("store_ids", []))]
-    subcats = [(s["name"], s["url"]) for s in params.get("subcats", [])]
-    section_name = params.get("section") or "Sección"
-    only_sod = not params.get("include_non_sodimac")
-    shots = params.get("screenshots", False)
-
-    from engines import _checkpoints as _ckpts
-    CHECKPOINT_DIR = outdir / "_checkpoints"
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    
-    run_id = params.get("resume_run_id")
-    prior_rows = []
-    prior_done = set()
-    
-    if run_id:
-        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
-        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
-        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
-        meta = _ckpts.read_meta(CHECKPOINT_DIR, run_id) or {}
-        if meta:
-            stores = [s for s in ms.ALL_STORES if s["id"] in set(meta.get("store_ids", []))]
-            subcats = [(s["name"], s["url"]) for s in meta.get("subcats", [])]
-            section_name = meta.get("section_name", section_name)
-            only_sod = meta.get("only_sod", only_sod)
-            shots = meta.get("shots", shots)
-    else:
-        run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{_safe(section_name)[:20]}"
-        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
-            "tool": "seccion",
-            "retailer": retailer,
-            "section_name": section_name,
-            "store_ids": [s["id"] for s in stores],
-            "subcats": [{"name": n, "url": u} for n, u in subcats],
-            "only_sod": only_sod,
-            "shots": shots,
-        })
-
+    stores = [s for s in ms.ALL_STORES if s["id"] in set(params["store_ids"])]
+    subcats = [(s["name"], s["url"]) for s in params["subcats"]]
     if not stores or not subcats:
         raise ValueError("Falta seleccionar tienda(s) o subcategoría(s).")
 
+    section_name = params.get("section") or "Sección"
+    only_sod = not params.get("include_non_sodimac")
+    shots = params.get("screenshots", False)
     # PARALLEL-SAFE: dir por-job pasado como parámetro a scrape_subcat, NO por la
     # global ms.SCREENSHOT_DIR (que 2 jobs de Sección se pisarían).
     shot_dir = _shots_dir(outdir, tag) if shots else None
 
-    all_rows = list(prior_rows)
+    all_rows = []
     n_st, n_sub = len(stores), len(subcats)
     prog = _NullProg()
 
@@ -386,10 +354,6 @@ async def run_seccion(params, emit, outdir: Path, tag: str = ""):
                 seen = {r["SKU"] for r in all_rows
                         if r.get("Tienda") == store["id"] and r.get("SKU")}
                 for sj, (sc_name, sc_url) in enumerate(subcats, 1):
-                    if (store["id"], sc_name) in prior_done:
-                        emit({"type": "info", "msg": f"Saltando {store['name']} · {sc_name} (ya completado)"})
-                        continue
-
                     emit({"type": "progress", "phase": "subcat", "done": sj, "total": n_sub,
                           "msg": f"{store['name']} · {section_name} · {sc_name}",
                           "frac": ((si - 1) * n_sub + sj) / (n_st * n_sub)})
@@ -406,11 +370,8 @@ async def run_seccion(params, emit, outdir: Path, tag: str = ""):
                         if not sku or sku in seen:
                             continue
                         seen.add(sku)
-                        r2 = {"Tienda": store["id"],
-                                         "Nombre Tienda": store["name"], **r}
-                        all_rows.append(r2)
-                        _ckpts.append_row(CHECKPOINT_DIR, run_id, r2)
-                    _ckpts.append_done(CHECKPOINT_DIR, run_id, store["id"], sc_name)
+                        all_rows.append({"Tienda": store["id"],
+                                         "Nombre Tienda": store["name"], **r})
                     emit({"type": "count", "rows": len(all_rows)})
         finally:
             await b.close()
@@ -421,7 +382,6 @@ async def run_seccion(params, emit, outdir: Path, tag: str = ""):
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
     ms.write_excel(all_rows, str(out), with_images=shots)
     _post_maestra_async(all_rows, "Maestra")  # consolidar en la Maestra Sodimac
-    _ckpts.cleanup_run(CHECKPOINT_DIR, run_id)
     _cleanup_shots(shot_dir)
     return out
 
