@@ -26,8 +26,6 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from engines import _checkpoints as _ckpts
-
 # Paralelismo local de Fast. Se bajó de 12→8: con 12 (y peor si corría junto a
 # otros jobs Sodimac) Cloudflare empezaba a devolver challenges y se acumulaban
 # tandas de "error de red persistente" (categorías incompletas). 8 es el número
@@ -190,47 +188,16 @@ async def _run_mk7_generic(params, emit, outdir, tag, mod, out_base, label):
                       "desc": str(r[desc_col]).strip() if has_desc else ""})
     if not metas:
         raise ValueError("El archivo no tiene SKUs válidos.")
-
-    run_id = params.get("resume_run_id")
-    prior_rows, prior_done = [], set()
-    CHECKPOINT_DIR = outdir / "_checkpoints"
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    if run_id:
-        emit({"type": "info", "msg": "Reanudando proceso anterior…"})
-        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
-        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
-        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
-    else:
-        run_id = f"{out_base}_{_ts()}"
-        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
-            "tool": "mk7", "section_name": out_base, "store_ids": params["store_ids"]
-        })
-
-    all_rows = list(prior_rows)
-    def _on_row(r):
-        all_rows.append(r)
-        _ckpts.append_row(CHECKPOINT_DIR, run_id, r)
-
-    # El engine de falabella/construmart soporta on_row y skip_pairs
-    skip_pairs = {(r.get("Zona") or r.get("Tienda"), r.get("SKU")) for r in all_rows}
-
     emit({"type": "info", "msg": f"{len(metas)} SKUs · {len(stores)} tienda(s) · {label}"})
-    try:
-        await mod.search_skus(
-            metas, stores, screenshot=bool(params.get("screenshots")), headless=True,
-            progress_cb=_mk7_positional_progress(emit, len(stores)),
-            on_row=_on_row, skip_pairs=skip_pairs)
-    except Exception as e:
-        emit({"type": "error", "msg": str(e)})
-        raise
-
-    if not all_rows:
+    rows = await mod.search_skus(
+        metas, stores, screenshot=bool(params.get("screenshots")), headless=True,
+        progress_cb=_mk7_positional_progress(emit, len(stores)))
+    if not rows:
         raise RuntimeError(f"No se encontró ningún SKU en {label} para las tiendas elegidas.")
     out = outdir / _outname(out_base, tag)
-    emit({"type": "count", "rows": len(all_rows)})
-    emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
-    mod.write_output(all_rows, str(out))
-    _ckpts.cleanup_run(CHECKPOINT_DIR, run_id)
+    emit({"type": "count", "rows": len(rows)})
+    emit({"type": "info", "msg": f"Escribiendo Excel ({len(rows)} filas)…"})
+    mod.write_output(rows, str(out))
     return out
 
 
@@ -257,57 +224,18 @@ async def run_mk7(params, emit, outdir: Path, tag: str = ""):
 
     emit({"type": "info", "msg": f"{len(skus)} SKUs · {len(stores)} tienda(s)"})
     shots = _shots_dir(outdir, tag) if params.get("screenshots") else None
-    
-    run_id = params.get("resume_run_id")
-    prior_rows, prior_done = [], set()
-    CHECKPOINT_DIR = outdir / "_checkpoints"
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    if run_id:
-        emit({"type": "info", "msg": "Reanudando proceso anterior…"})
-        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
-        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
-        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
-    else:
-        run_id = f"MK7_{_ts()}"
-        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
-            "tool": "mk7", "section_name": "MK7_Sodimac", "store_ids": params["store_ids"]
-        })
+    matches = await se.search_skus_mk6(
+        skus, stores, headless=True, screenshot_dir=(str(shots) if shots else None),
+        progress_cb=_zone_progress(emit, len(stores), {"zone": 0}))
 
-    all_rows = list(prior_rows)
-    def _on_match(m):
-        all_rows.append(m)
-        _ckpts.append_row(CHECKPOINT_DIR, run_id, m)
-    
-    # Sodimac engine usa skip_store_ids para evitar tiendas, y procesa zonas completas
-    # Wait, skip_store_ids is available in sodimac_engine.search_skus_mk6
-    # Y on_match is available
-    skip_store_ids = {s["id"] for s in stores if s["id"] in prior_done}
-
-    def _sodimac_wrap(ev):
-        _zone_progress(emit, len(stores), {"zone": 0})(ev)
-        if ev.get("event") == "zone_end":
-            st = ev.get("store") or {}
-            sid = st.get("id")
-            if sid and not ev.get("zone_failed"):
-                _ckpts.append_done(CHECKPOINT_DIR, run_id, sid, "ALL")
-
-    try:
-        await se.search_skus_mk6(
-            skus, stores, headless=True, screenshot_dir=(str(shots) if shots else None),
-            progress_cb=_sodimac_wrap, on_match=_on_match, skip_store_ids=skip_store_ids)
-    except Exception as e:
-        emit({"type": "error", "msg": str(e)})
-        raise
-
-    if not all_rows:
+    if not matches:
         raise RuntimeError("No se encontró ningún SKU en las tiendas seleccionadas.")
 
     out = outdir / _outname("MK7_Sodimac", tag)
-    emit({"type": "count", "rows": len(all_rows)})
-    emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
-    se.write_output(df, desc_col, sku_col, easy_col, all_rows, str(out), stores=stores)
-    _post_maestra_async(all_rows, "MK7")  # consolidar en la Maestra Sodimac
-    _ckpts.cleanup_run(CHECKPOINT_DIR, run_id)
+    emit({"type": "count", "rows": len(matches)})
+    emit({"type": "info", "msg": f"Escribiendo Excel ({len(matches)} filas)…"})
+    se.write_output(df, desc_col, sku_col, easy_col, matches, str(out), stores=stores)
+    _post_maestra_async(matches, "MK7")  # consolidar en la Maestra Sodimac
     _cleanup_shots(shots)
     return out
 
@@ -395,9 +323,10 @@ async def run_seccion(params, emit, outdir: Path, tag: str = ""):
     stores = [s for s in ms.ALL_STORES if s["id"] in set(params.get("store_ids", []))]
     subcats = [(s["name"], s["url"]) for s in params.get("subcats", [])]
     section_name = params.get("section") or "Sección"
-    only_sod = params.get("include_non_sodimac", False) is False
+    only_sod = not params.get("include_non_sodimac")
     shots = params.get("screenshots", False)
 
+    from engines import _checkpoints as _ckpts
     CHECKPOINT_DIR = outdir / "_checkpoints"
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     
@@ -511,25 +440,7 @@ async def _run_seccion_falabella(params, emit, outdir, tag=""):
     section_name = params.get("section") or "Sección"
     only_fa = not params.get("include_non_sodimac")  # "solo Falabella" (mismo toggle)
     shots = params.get("screenshots", False)
-    
-    run_id = params.get("resume_run_id")
-    prior_rows, prior_done = [], set()
-    CHECKPOINT_DIR = outdir / "_checkpoints"
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    if run_id:
-        emit({"type": "info", "msg": "Reanudando proceso anterior…"})
-        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
-        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
-        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
-    else:
-        run_id = f"Falabella_{_safe(section_name)}_{_ts()}"
-        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
-            "tool": "seccion", "section_name": section_name,
-            "subcats": [s[0] for s in subcats], "store_ids": params["store_ids"]
-        })
-
-    all_rows = list(prior_rows)
-    prog = _NullProg()
+    all_rows, prog = [], _NullProg()
     n_st, n_sub = len(stores), len(subcats)
 
     async with Stealth().use_async(async_playwright()) as pw:
@@ -547,10 +458,6 @@ async def _run_seccion_falabella(params, emit, outdir, tag=""):
                     continue
                 seen = {r["SKU"] for r in all_rows if r.get("Tienda") == store["id"] and r.get("SKU")}
                 for sj, (sc_name, sc_url) in enumerate(subcats, 1):
-                    if (store["id"], sc_name) in prior_done:
-                        emit({"type": "info", "msg": f"Saltando {store['name']} · {sc_name} (ya completado)"})
-                        continue
-
                     emit({"type": "progress", "phase": "subcat", "done": sj, "total": n_sub,
                           "msg": f"{store['name']} · {section_name} · {sc_name}",
                           "frac": ((si - 1) * n_sub + sj) / (n_st * n_sub)})
@@ -562,10 +469,7 @@ async def _run_seccion_falabella(params, emit, outdir, tag=""):
                         if not sku or sku in seen:
                             continue
                         seen.add(sku)
-                        r2 = {"Tienda": store["id"], "Nombre Tienda": store["name"], **r}
-                        all_rows.append(r2)
-                        _ckpts.append_row(CHECKPOINT_DIR, run_id, r2)
-                    _ckpts.append_done(CHECKPOINT_DIR, run_id, store["id"], sc_name)
+                        all_rows.append({"Tienda": store["id"], "Nombre Tienda": store["name"], **r})
                     emit({"type": "count", "rows": len(all_rows)})
         finally:
             await b.close()
@@ -575,7 +479,6 @@ async def _run_seccion_falabella(params, emit, outdir, tag=""):
     out = outdir / _outname(f"Seccion_Falabella_{_safe(section_name)}", tag)
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
     mf.write_excel(all_rows, str(out), with_images=shots)
-    _ckpts.cleanup_run(CHECKPOINT_DIR, run_id)
     return out
 
 
@@ -592,25 +495,7 @@ async def _run_seccion_construmart(params, emit, outdir, tag=""):
     section_name = params.get("section") or "Sección"
     shots = params.get("screenshots", False)
     wanted = set(params.get("store_ids") or [])
-    
-    run_id = params.get("resume_run_id")
-    prior_rows, prior_done = [], set()
-    CHECKPOINT_DIR = outdir / "_checkpoints"
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    if run_id:
-        emit({"type": "info", "msg": "Reanudando proceso anterior…"})
-        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
-        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
-        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
-    else:
-        run_id = f"Construmart_{_safe(section_name)}_{_ts()}"
-        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
-            "tool": "seccion", "section_name": section_name,
-            "subcats": [s[0] for s in subcats], "store_ids": params["store_ids"]
-        })
-
-    all_rows = list(prior_rows)
-    prog = _NullProg()
+    all_rows, prog = [], _NullProg()
 
     async with Stealth().use_async(async_playwright()) as pw:
         b = await pw.chromium.launch(headless=True, args=["--no-sandbox"])
@@ -629,19 +514,12 @@ async def _run_seccion_construmart(params, emit, outdir, tag=""):
                     emit({"type": "warn", "msg": f"No se pudo fijar {store['name']}, se salta."})
                     continue
                 for sj, (sc_name, sc_url) in enumerate(subcats, 1):
-                    if (store["id"], sc_name) in prior_done:
-                        emit({"type": "info", "msg": f"Saltando {store['name']} · {sc_name} (ya completado)"})
-                        continue
-
                     emit({"type": "progress", "phase": "subcat", "done": sj, "total": n_sub,
                           "msg": f"{store['name']} · {section_name} · {sc_name}",
                           "frac": ((si - 1) * n_sub + sj) / (n_st * n_sub)})
                     res = await mc.scrape_subcat(page, section_name, sc_name, sc_url, store, prog, None,
                                                  download_images=shots)
-                    for r in res.get("rows", []):
-                        all_rows.append(r)
-                        _ckpts.append_row(CHECKPOINT_DIR, run_id, r)
-                    _ckpts.append_done(CHECKPOINT_DIR, run_id, store["id"], sc_name)
+                    all_rows.extend(res.get("rows", []))
                     emit({"type": "count", "rows": len(all_rows)})
         finally:
             await b.close()
@@ -651,7 +529,6 @@ async def _run_seccion_construmart(params, emit, outdir, tag=""):
     out = outdir / _outname(f"Seccion_Construmart_{_safe(section_name)}", tag)
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
     mc.write_excel(all_rows, str(out), with_images=shots)
-    _ckpts.cleanup_run(CHECKPOINT_DIR, run_id)
     return out
 
 
@@ -670,29 +547,8 @@ async def run_fast(params, emit, outdir: Path, tag: str = ""):
     url_scope = (params.get("url") or "").strip()
     sections = params.get("sections") or None
 
-    run_id = params.get("resume_run_id")
-    prior_rows, prior_done = [], set()
-    CHECKPOINT_DIR = outdir / "_checkpoints"
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    if run_id:
-        emit({"type": "info", "msg": "Reanudando proceso anterior…"})
-        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
-        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
-        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
-    else:
-        run_id = f"Fast_{_ts()}"
-        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
-            "tool": "fast", "store_ids": params["store_ids"],
-            "url": url_scope, "sections": sections
-        })
-
-    all_rows = list(prior_rows)
-    report = []
-    prog = {"rows": len(all_rows)}  # contador acumulado en vivo (Fast barre 1 tienda ~9 min)
-    
-    def _on_row_fast(r):
-        _ckpts.append_row(CHECKPOINT_DIR, run_id, r)
-
+    all_rows, report = [], []
+    prog = {"rows": 0}  # contador acumulado en vivo (Fast barre 1 tienda ~9 min)
     for i, store in enumerate(stores, 1):
         emit({"type": "info", "msg": f"[{i}/{len(stores)}] {store['name']}: fijando zona…"})
         if url_scope:
@@ -706,24 +562,12 @@ async def run_fast(params, emit, outdir: Path, tag: str = ""):
         if sections:
             wanted = set(sections)
             tree = [(sec, subs) for sec, subs in tree if sec in wanted]
-        
-        if prior_done:
-            filtered_tree = []
-            for sec, subs in tree:
-                new_subs = [(nm, u) for nm, u in subs if (store["id"], nm) not in prior_done]
-                if new_subs:
-                    filtered_tree.append((sec, new_subs))
-            tree = filtered_tree
-
         n_sub = sum(len(s) for _, s in tree)
         nst = len(stores)
         emit({"type": "progress", "phase": "zona", "done": i, "total": nst, "msg": store["name"]})
-        if n_sub == 0:
-            emit({"type": "info", "msg": f"{store['name']}: completada, saltando…"})
-            continue
         emit({"type": "info", "msg": f"{store['name']}: barriendo {n_sub} subcategorías…"})
 
-        def subcat_cb(done, total, sec, name, kept, scanned, status=None, _i=i, _nst=nst, _sid=store["id"]):
+        def subcat_cb(done, total, sec, name, kept, scanned, status=None, _i=i, _nst=nst):
             emit({"type": "progress", "phase": "subcat", "done": done, "total": total,
                   "msg": f"{store['name']} · {sec[:20]} · {name[:20]}",
                   "frac": (_i - 1 + done / max(total, 1)) / _nst})
@@ -731,12 +575,11 @@ async def run_fast(params, emit, outdir: Path, tag: str = ""):
             # salía al terminar la tienda entera → ~9 min en 0).
             prog["rows"] += kept
             emit({"type": "count", "rows": prog["rows"]})
-            _ckpts.append_done(CHECKPOINT_DIR, run_id, _sid, name)
 
         rows = await asyncio.to_thread(
             mf.scrape_all_wholesale, cookie, tree, store,
             wholesale_only=wholesale_only, only_sodimac=True,
-            subcat_cb=subcat_cb, on_row=_on_row_fast, workers=workers, report=report)
+            subcat_cb=subcat_cb, workers=workers, report=report)
         all_rows.extend(rows)
         prog["rows"] = len(all_rows)  # reconcilia con el total real de la tienda
         emit({"type": "count", "rows": len(all_rows)})
@@ -752,7 +595,6 @@ async def run_fast(params, emit, outdir: Path, tag: str = ""):
     emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
     ms.write_excel(all_rows, str(out), columns=mf.OUTPUT_COLS, with_images=False)
     _post_maestra_async(all_rows, "Fast")  # consolidar en la Maestra Sodimac
-    _ckpts.cleanup_run(CHECKPOINT_DIR, run_id)
     return out
 
 
@@ -806,51 +648,16 @@ async def run_ferni_sku(params, emit, outdir: Path, tag: str = ""):
     shots = params.get("screenshots", False)
     shot_dir = _shots_dir(outdir, tag) if shots else None
 
-    run_id = params.get("resume_run_id")
-    prior_rows, prior_done = [], set()
-    CHECKPOINT_DIR = outdir / "_checkpoints"
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    if run_id:
-        emit({"type": "info", "msg": "Reanudando proceso anterior…"})
-        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
-        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
-        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
-    else:
-        run_id = f"Ferni_SKU_{_ts()}"
-        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
-            "tool": "ferni_sku", "store_ids": params["store_ids"]
-        })
-
-    all_rows = list(prior_rows)
-    def _on_match_ferni_sku(m):
-        all_rows.append(m)
-        _ckpts.append_row(CHECKPOINT_DIR, run_id, m)
-
-    skip_store_ids = {s["id"] for s in stores if s["id"] in prior_done}
-    def _ferni_sku_wrap(ev):
-        _zone_progress(emit, len(stores), {"zone": 0})(ev)
-        if ev.get("event") == "zone_end":
-            st = ev.get("store") or {}
-            sid = st.get("id")
-            if sid and not ev.get("zone_failed"):
-                _ckpts.append_done(CHECKPOINT_DIR, run_id, sid, "ALL")
-
-    try:
-        await fs.search_doors(
-            skus, stores, headless=True,
-            screenshot_dir=(str(shot_dir) if shot_dir else None),
-            progress_cb=_ferni_sku_wrap, on_match=_on_match_ferni_sku,
-            skip_store_ids=skip_store_ids)
-    except Exception as e:
-        emit({"type": "error", "msg": str(e)})
-        raise
-    
-    if not all_rows:
+    matches = await fs.search_doors(
+        skus, stores, headless=True,
+        screenshot_dir=(str(shot_dir) if shot_dir else None),
+        progress_cb=_zone_progress(emit, len(stores), {"zone": 0}))
+    if not matches:
         raise RuntimeError("No se encontró ninguna puerta en las tiendas seleccionadas.")
 
     # Reporte transparente: qué SKUs no aparecieron en ninguna tienda (ni en la
     # búsqueda ni en el listado de categoría) → no están en el catálogo actual.
-    found_skus = {str(m.get("sku_input", "")) for m in all_rows}
+    found_skus = {str(m.get("sku_input", "")) for m in matches}
     not_found = [s for s in skus if s not in found_skus]
     if not_found:
         emit({"type": "warn",
@@ -859,11 +666,10 @@ async def run_ferni_sku(params, emit, outdir: Path, tag: str = ""):
                       f"(descontinuados o sin stock).")})
 
     out = outdir / _outname("Ferni_SKU", tag)
-    emit({"type": "count", "rows": len(all_rows)})
-    emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
-    fs.write_output(df, desc_col, sku_col, easy_col, all_rows, str(out),
+    emit({"type": "count", "rows": len(matches)})
+    emit({"type": "info", "msg": f"Escribiendo Excel ({len(matches)} filas)…"})
+    fs.write_output(df, desc_col, sku_col, easy_col, matches, str(out),
                     stores=stores, embed_images=shots)
-    _ckpts.cleanup_run(CHECKPOINT_DIR, run_id)
     _cleanup_shots(shot_dir)
     return out
 
@@ -883,40 +689,13 @@ async def run_ferni_seccion(params, emit, outdir: Path, tag: str = ""):
     shots = params.get("screenshots", False)
     shot_dir = _shots_dir(outdir, tag) if shots else None
 
-    run_id = params.get("resume_run_id")
-    prior_rows, prior_done = [], set()
-    CHECKPOINT_DIR = outdir / "_checkpoints"
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    if run_id:
-        emit({"type": "info", "msg": "Reanudando proceso anterior…"})
-        prior_rows = _ckpts.load_rows(CHECKPOINT_DIR, run_id)
-        prior_done = _ckpts.read_done(CHECKPOINT_DIR, run_id)
-        _ckpts.touch_run(CHECKPOINT_DIR, run_id)
-    else:
-        run_id = f"Ferni_{_safe(section_name)}_{_ts()}"
-        _ckpts.start_run(CHECKPOINT_DIR, run_id, {
-            "tool": "ferni_seccion", "section_name": section_name, "store_ids": params["store_ids"]
-        })
-
-    all_rows = list(prior_rows)
-    def _on_row_ferni_seccion(r):
-        all_rows.append(r)
-        _ckpts.append_row(CHECKPOINT_DIR, run_id, r)
-
-    done_keys = set()
-    for _sid, _sname in prior_done:
-        for _sec, _nm, _url in subcats:
-            if _nm == _sname:
-                done_keys.add((_sid, _url))
-
     total = len(stores) * len(subcats)
-    state = {"n": 0, "rows": len(all_rows)}
+    state = {"n": 0, "rows": 0}
 
     def progress_cb(ev):
+        # Nombres reales emitidos por ferni_maestra_sodimac.scrape_maestra
         e = ev.get("event")
-        st_info = ev.get("store") or {}
-        store = st_info.get("name", "")
-        sid = st_info.get("id")
+        store = (ev.get("store") or {}).get("name", "")
         if e == "subcat_start":
             emit({"type": "progress", "phase": "subcat", "done": state["n"], "total": total,
                   "msg": f"{store} · {ev.get('subcat', '')}"})
@@ -924,31 +703,28 @@ async def run_ferni_seccion(params, emit, outdir: Path, tag: str = ""):
             state["n"] += 1
             emit({"type": "progress", "phase": "subcat", "done": state["n"], "total": total,
                   "msg": f"{store} · {ev.get('subcat', '')}"})
-            if sid and not ev.get("skipped"):
-                _ckpts.append_done(CHECKPOINT_DIR, run_id, sid, ev.get("subcat"))
         elif e == "zone_end" and ev.get("zone_failed"):
             emit({"type": "warn", "msg": f"No se pudo fijar zona en {store}"})
         elif e == "browser_error":
             emit({"type": "warn", "msg": f"Navegador: {ev.get('msg', '')}"})
 
+    def on_row(_r):
+        state["rows"] += 1
+        if state["rows"] % 25 == 0:
+            emit({"type": "count", "rows": state["rows"]})
+
     emit({"type": "info", "msg": f"{len(subcats)} subcat(s) × {len(stores)} tienda(s)"})
-    try:
-        await fm.scrape_maestra(
-            subcats, stores, headless=True,
-            screenshot_dir=(str(shot_dir) if shot_dir else None),
-            progress_cb=progress_cb, on_row=_on_row_ferni_seccion, done_keys=done_keys)
-    except Exception as e:
-        emit({"type": "error", "msg": str(e)})
-        raise
-    
-    if not all_rows:
+    rows = await fm.scrape_maestra(
+        subcats, stores, headless=True,
+        screenshot_dir=(str(shot_dir) if shot_dir else None),
+        progress_cb=progress_cb, on_row=on_row)
+    if not rows:
         raise RuntimeError("No se obtuvo ninguna fila.")
 
+    emit({"type": "count", "rows": len(rows)})
     out = outdir / _outname(f"Ferni_Seccion_{_safe(section_name)}", tag)
-    emit({"type": "count", "rows": len(all_rows)})
-    emit({"type": "info", "msg": f"Escribiendo Excel ({len(all_rows)} filas)…"})
-    fm.write_excel(all_rows, str(out), with_images=shots)
-    _ckpts.cleanup_run(CHECKPOINT_DIR, run_id)
+    emit({"type": "info", "msg": f"Escribiendo Excel ({len(rows)} filas)…"})
+    fm.write_excel(rows, str(out), with_images=shots)
     _cleanup_shots(shot_dir)
     return out
 
