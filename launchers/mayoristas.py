@@ -41,9 +41,15 @@ def run():
     globals()["_SESSION_ID"] = _SESSION_ID
     def _user_hint():
         try:
-            for k in ("COLAB_USER", "USER", "JUPYTERHUB_USER"):
-                v = os.environ.get(k)
-                if v: return v
+            import os as _os, sys as _sys
+            user = None
+            for k in ("COLAB_USER", "USER", "USERNAME", "JUPYTERHUB_USER"):
+                user = _os.environ.get(k)
+                if user: break
+            user = user or "Unknown"
+            if "google.colab" not in _sys.modules:
+                return f"{user} (Cruzer)"
+            return user
         except Exception:
             pass
         return ""

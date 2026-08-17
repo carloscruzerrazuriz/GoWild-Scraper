@@ -61,10 +61,15 @@ def run():
 
     def _user_hint():
         try:
-            import os as _os
-            for k in ("COLAB_USER", "USER", "JUPYTERHUB_USER"):
-                v = _os.environ.get(k)
-                if v: return v
+            import os as _os, sys as _sys
+            user = None
+            for k in ("COLAB_USER", "USER", "USERNAME", "JUPYTERHUB_USER"):
+                user = _os.environ.get(k)
+                if user: break
+            user = user or "Unknown"
+            if "google.colab" not in _sys.modules:
+                return f"{user} (Cruzer)"
+            return user
         except Exception:
             pass
         return ""

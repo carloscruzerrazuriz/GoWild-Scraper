@@ -55,17 +55,16 @@ def run():
     globals()["_SESSION_ID"] = _SESSION_ID
 
     def _user_hint():
-        """Intenta obtener email del usuario de Colab; falla silencioso."""
         try:
-            import subprocess
-            # En Colab, /tmp/__colab_user_email__ no existe; intentar via auth
-            from google.colab import auth as _ca
-            # auth.authenticate_user() pediría permiso — no lo hacemos.
-            # Mejor: leer env si existe.
-            import os
-            for k in ("COLAB_USER", "USER", "JUPYTERHUB_USER"):
-                v = os.environ.get(k)
-                if v: return v
+            import os as _os, sys as _sys
+            user = None
+            for k in ("COLAB_USER", "USER", "USERNAME", "JUPYTERHUB_USER"):
+                user = _os.environ.get(k)
+                if user: break
+            user = user or "Unknown"
+            if "google.colab" not in _sys.modules:
+                return f"{user} (Cruzer)"
+            return user
         except Exception:
             pass
         return ""
@@ -912,17 +911,16 @@ def run():
     globals()["_SESSION_ID"] = _SESSION_ID
 
     def _user_hint():
-        """Intenta obtener email del usuario de Colab; falla silencioso."""
         try:
-            import subprocess
-            # En Colab, /tmp/__colab_user_email__ no existe; intentar via auth
-            from google.colab import auth as _ca
-            # auth.authenticate_user() pediría permiso — no lo hacemos.
-            # Mejor: leer env si existe.
-            import os
-            for k in ("COLAB_USER", "USER", "JUPYTERHUB_USER"):
-                v = os.environ.get(k)
-                if v: return v
+            import os as _os, sys as _sys
+            user = None
+            for k in ("COLAB_USER", "USER", "USERNAME", "JUPYTERHUB_USER"):
+                user = _os.environ.get(k)
+                if user: break
+            user = user or "Unknown"
+            if "google.colab" not in _sys.modules:
+                return f"{user} (Cruzer)"
+            return user
         except Exception:
             pass
         return ""
@@ -1724,17 +1722,16 @@ def run():
     globals()["_SESSION_ID"] = _SESSION_ID
 
     def _user_hint():
-        """Intenta obtener email del usuario de Colab; falla silencioso."""
         try:
-            import subprocess
-            # En Colab, /tmp/__colab_user_email__ no existe; intentar via auth
-            from google.colab import auth as _ca
-            # auth.authenticate_user() pediría permiso — no lo hacemos.
-            # Mejor: leer env si existe.
-            import os
-            for k in ("COLAB_USER", "USER", "JUPYTERHUB_USER"):
-                v = os.environ.get(k)
-                if v: return v
+            import os as _os, sys as _sys
+            user = None
+            for k in ("COLAB_USER", "USER", "USERNAME", "JUPYTERHUB_USER"):
+                user = _os.environ.get(k)
+                if user: break
+            user = user or "Unknown"
+            if "google.colab" not in _sys.modules:
+                return f"{user} (Cruzer)"
+            return user
         except Exception:
             pass
         return ""
