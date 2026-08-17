@@ -25,7 +25,7 @@ datas, binaries, hiddenimports = [], [], []
 # con "Importing the numpy C-extensions failed" (bug real de la v6 en Windows).
 # playwright además arrastra su driver Node.
 for pkg in ("playwright", "playwright_stealth", "numpy", "pandas",
-            "openpyxl", "bs4", "PIL", "webview", "clr_loader"):
+            "openpyxl", "bs4", "PIL", "webview", "clr_loader", "certifi"):
     try:
         d, b, h = collect_all(pkg)
         datas += d; binaries += b; hiddenimports += h
@@ -38,6 +38,7 @@ hiddenimports += [
     "urllib.request", "zipfile", "json", "csv", "sqlite3",
     # backend de pywebview en Windows (WebView2/Edge vía pythonnet)
     "clr", "webview.platforms.edgechromium", "webview.platforms.winforms",
+    "certifi",
 ]
 
 a = Analysis(

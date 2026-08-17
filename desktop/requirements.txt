@@ -12,3 +12,4 @@ Pillow>=10.0
 # Si falta o falla en runtime, el shell cae al navegador (fallback).
 pywebview>=5.0
 pythonnet>=3.0 ; sys_platform == "win32"
+certifi>=2023.7.22

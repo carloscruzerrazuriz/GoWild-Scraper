@@ -148,8 +148,17 @@ def update_code() -> Path | None:
     _sweep_stale()
     try:
         _log("Descargando la última versión desde GitHub…")
+        
+        ctx = None
+        try:
+            import ssl
+            import certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            pass
+
         req = urllib.request.Request(ZIP_URL, headers={"User-Agent": "Cruzer-Desktop"})
-        with urllib.request.urlopen(req, timeout=60) as r:
+        with urllib.request.urlopen(req, timeout=60, context=ctx) as r:
             data = r.read()
         tmp = Path(tempfile.mkdtemp(prefix=_TMP_PREFIX))
         _CODE_DIR = tmp
@@ -164,7 +173,17 @@ def update_code() -> Path | None:
     except Exception as e:  # noqa: BLE001
         wipe_code()
         _log(f"ERROR: no pude descargar el código desde GitHub ({e}).")
-        _log("Revisa tu conexión a internet: la app necesita GitHub para funcionar.")
+        
+        err_str = str(e)
+        if "429" in err_str:
+            _log("GitHub ha bloqueado temporalmente las descargas para esta red por exceso de uso.")
+            _log("Solución: Espera 15 minutos e intenta abrir Cruzer nuevamente.")
+        elif "CERTIFICATE_VERIFY_FAILED" in err_str:
+            _log("Error de seguridad (SSL): Windows no reconoce el certificado de GitHub.")
+            _log("Solución: Descarga y usa el archivo Cruzer.exe más reciente (actualizado con certifi).")
+        else:
+            _log("Revisa tu conexión a internet: la app necesita GitHub para funcionar.")
+            
         return None
 
 
